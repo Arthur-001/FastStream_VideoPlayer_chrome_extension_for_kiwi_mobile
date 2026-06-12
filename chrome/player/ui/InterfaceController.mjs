@@ -449,11 +449,6 @@ export class InterfaceController {
         return;
       }
 
-      if (this.isBigPlayButtonVisible()) {
-        this.playPauseToggle();
-        return;
-      }
-
       if (clickTimeout !== null) {
         clickCount++;
       } else {
@@ -465,7 +460,7 @@ export class InterfaceController {
 
         let clickAction;
         if (clickCount === 1) {
-          clickAction = this.client.options.singleClickAction;
+          clickAction = this.isBigPlayButtonVisible() ? ClickActions.PLAY_PAUSE : this.client.options.singleClickAction;
         } else if (clickCount === 2) {
           clickAction = this.client.options.doubleClickAction;
         } else if (clickCount === 3) {
@@ -773,11 +768,15 @@ export class InterfaceController {
       const opts = this.client.options;
 
       if (zone === 'center') {
-        // Single-tap center: toggle play/pause + toggle controls bar
-        this.playPauseToggle();
-        this.toggleControlBar();
-        this.playPauseAnimation();
-
+        if (count === 1) {
+          // Single-tap center: toggle play/pause + toggle controls bar
+          this.playPauseToggle();
+          this.toggleControlBar();
+          this.playPauseAnimation();
+        } else if (count >= 2) {
+          // Double-tap center: exit fullscreen mode
+          this.fullscreenToggle(false);
+        }
       } else if (count >= 2) {
         // Double-tap or more: seek
         const seekUnits = count - 1;
