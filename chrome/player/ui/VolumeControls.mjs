@@ -22,6 +22,7 @@ export class VolumeControls extends EventEmitter {
 
   setupUI() {
     DOMElements.volumeContainer.addEventListener('mousedown', this.onVolumeBarMouseDown.bind(this));
+    DOMElements.volumeContainer.addEventListener('touchstart', this.onVolumeBarMouseDown.bind(this), { passive: false });
     DOMElements.volumeContainer.addEventListener('dblclick', (e) => {
       this.setVolume(1);
       e.stopPropagation();
@@ -87,6 +88,13 @@ export class VolumeControls extends EventEmitter {
   }
 
   onVolumeBarMouseDown(event) {
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+
+    const { clientX: initX } = this.getCoordinates(event);
+    const initialPosition = Math.min(Math.max(initX - WebUtils.getOffsetLeft(DOMElements.volumeContainer) - 10, 0), DOMElements.volumeControlBar.clientWidth);
+
     const shiftVolume = (volumeBarX) => {
       const totalWidth = DOMElements.volumeControlBar.clientWidth;
 
@@ -105,8 +113,16 @@ export class VolumeControls extends EventEmitter {
       }
     };
 
+    if (!isNaN(initialPosition)) {
+      shiftVolume(initialPosition);
+    }
+
     const onVolumeBarMouseMove = (event) => {
-      const currentX = event.clientX - WebUtils.getOffsetLeft(DOMElements.volumeContainer) - 10;
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      const { clientX } = this.getCoordinates(event);
+      const currentX = clientX - WebUtils.getOffsetLeft(DOMElements.volumeContainer) - 10;
       shiftVolume(currentX);
     };
 
@@ -116,7 +132,12 @@ export class VolumeControls extends EventEmitter {
       DOMElements.playerContainer.removeEventListener('mouseup', onVolumeBarMouseUp);
       DOMElements.playerContainer.removeEventListener('touchend', onVolumeBarMouseUp);
 
-      const currentX = event.clientX - WebUtils.getOffsetLeft(DOMElements.volumeContainer) - 10;
+      const { clientX } = this.getCoordinates(event);
+      let currentX = clientX - WebUtils.getOffsetLeft(DOMElements.volumeContainer) - 10;
+
+      if (isNaN(currentX) && !isNaN(initialPosition)) {
+        currentX = initialPosition;
+      }
 
       if (!isNaN(currentX)) {
         shiftVolume(currentX);
@@ -129,6 +150,21 @@ export class VolumeControls extends EventEmitter {
     DOMElements.playerContainer.addEventListener('touchmove', onVolumeBarMouseMove);
 
     event.stopPropagation();
+  }
+
+  getCoordinates(event) {
+    let clientX = event.clientX;
+    let clientY = event.clientY;
+
+    if (event.touches && event.touches.length > 0) {
+      clientX = event.touches[0].clientX;
+      clientY = event.touches[0].clientY;
+    } else if (event.changedTouches && event.changedTouches.length > 0) {
+      clientX = event.changedTouches[0].clientX;
+      clientY = event.changedTouches[0].clientY;
+    }
+
+    return { clientX, clientY };
   }
 
   updateVolumeBar(volume) {

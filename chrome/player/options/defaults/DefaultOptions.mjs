@@ -54,6 +54,7 @@ export const DefaultOptions = {
   tapZonePercent: 40,       // Width % of each left/right tap zone (center = 100 - 2*tapZonePercent)
   tapWindowMs: 500,         // Tap accumulation window in milliseconds
   tapZoneLockZone: true,    // When true, zone switches mid-session are ignored (finish original direction)
+  kiwiControlsHideTimeout: 2000, // Timeout to auto-hide controls in milliseconds
 
   // Fullscreen Guard settings
   kiwiGuardEnabled: true,          // Master toggle for all guard features

@@ -790,7 +790,7 @@ export class InterfaceController {
         triggerSeekOverlay(zone, seekSeconds);
 
         // Show controls briefly then re-hide after seek
-        this.showControlBarTemporarily(2000);
+        this.showControlBarTemporarily(opts.kiwiControlsHideTimeout ?? 2000);
       }
     };
 
@@ -832,7 +832,7 @@ export class InterfaceController {
 
         // Show controls immediately on first left/right tap
         if (zone !== 'center') {
-          this.showControlBar();
+          this.showControlBarTemporarily(opts.kiwiControlsHideTimeout ?? 2000);
         }
 
       } else {
@@ -846,7 +846,7 @@ export class InterfaceController {
           touchTapZone = zone;
           touchTapCount = 1;
           if (zone !== 'center') {
-            this.showControlBar();
+            this.showControlBarTemporarily(opts.kiwiControlsHideTimeout ?? 2000);
           }
           clearTimeout(touchTapTimeout);
           touchTapTimeout = setTimeout(fireTapSession, opts.tapWindowMs ?? 500);
@@ -1157,7 +1157,7 @@ export class InterfaceController {
       if (!this.focusingControls && !this.mouseOverControls && !this.isBigPlayButtonVisible() && this.state.playing && this.toolManager.canHideControls()) {
         this.hideControlBar();
       }
-    }, time || 2000);
+    }, time || this.client.options.kiwiControlsHideTimeout || 2000);
   }
 
   hideControlBarOnAction(cooldown) {

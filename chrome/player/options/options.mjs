@@ -59,6 +59,7 @@ const tapSeekSeconds = document.getElementById('tapseekseconds');
 const tapZonePercent = document.getElementById('tapzonepercent');
 const tapWindowMs = document.getElementById('tapwindowms');
 const tapZoneLockZone = document.getElementById('tapzonelockzone');
+const kiwiControlsHideTimeout = document.getElementById('kiwicontrolshidetimeout');
 const kiwiGuardEnabled = document.getElementById('kiwiguardenabled');
 const kiwiGuardBlockRedirects = document.getElementById('kiwiguardblockedirects');
 const kiwiGuardOverlayNeutralize = document.getElementById('kiwiguardoverlayneutralize');
@@ -126,6 +127,7 @@ async function loadOptions(newOptions) {
   tapZonePercent.value = Options.tapZonePercent ?? 40;
   tapWindowMs.value = Options.tapWindowMs ?? 500;
   tapZoneLockZone.checked = Options.tapZoneLockZone !== false;
+  kiwiControlsHideTimeout.value = Options.kiwiControlsHideTimeout ?? 2000;
   kiwiGuardEnabled.checked = Options.kiwiGuardEnabled !== false;
   kiwiGuardBlockRedirects.checked = Options.kiwiGuardBlockRedirects !== false;
   kiwiGuardOverlayNeutralize.checked = Options.kiwiGuardOverlayNeutralize !== false;
@@ -487,6 +489,11 @@ tapZoneLockZone.addEventListener('change', () => {
   optionChanged();
 });
 
+kiwiControlsHideTimeout.addEventListener('change', () => {
+  Options.kiwiControlsHideTimeout = Math.min(10000, Math.max(500, parseInt(kiwiControlsHideTimeout.value) || 2000));
+  optionChanged();
+});
+
 kiwiGuardEnabled.addEventListener('change', () => {
   Options.kiwiGuardEnabled = kiwiGuardEnabled.checked;
   updateKiwiGuardSubOptions();
@@ -514,6 +521,7 @@ resetMobileOptions.addEventListener('click', () => {
     tapZonePercent: 40,
     tapWindowMs: 500,
     tapZoneLockZone: true,
+    kiwiControlsHideTimeout: 2000,
     kiwiGuardEnabled: true,
     kiwiGuardBlockRedirects: true,
     kiwiGuardOverlayNeutralize: true,
