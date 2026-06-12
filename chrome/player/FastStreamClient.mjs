@@ -144,6 +144,7 @@ export class FastStreamClient extends EventEmitter {
     this.syncedAudioPlayer = null;
     this.previewPlayer = null;
     this.saveSeek = true;
+    this.wakeLock = null;
     this.pastSeeks = [];
     this.pastUnseeks = [];
     this.fragmentsStore = {};
@@ -186,6 +187,9 @@ export class FastStreamClient extends EventEmitter {
     } catch (e) {
       console.error(e);
     }
+
+    this._visibilityListener = this.handleVisibilityChange.bind(this);
+    document.addEventListener('visibilitychange', this._visibilityListener);
   }
 
   /**
@@ -295,6 +299,44 @@ export class FastStreamClient extends EventEmitter {
       this.progressMemory.destroy();
       this.progressMemory = null;
     }
+    this.releaseWakeLock();
+    if (this._visibilityListener) {
+      document.removeEventListener('visibilitychange', this._visibilityListener);
+      this._visibilityListener = null;
+    }
+  }
+
+  async updateWakeLock() {
+    const shouldKeepOn = this.options.kiwiKeepScreenOn !== false;
+    
+    if (shouldKeepOn && !this.destroyed) {
+      if (!this.wakeLock && 'wakeLock' in navigator) {
+        try {
+          this.wakeLock = await navigator.wakeLock.request('screen');
+        } catch (err) {
+          console.warn('Wake Lock request failed:', err);
+        }
+      }
+    } else {
+      this.releaseWakeLock();
+    }
+  }
+
+  releaseWakeLock() {
+    if (this.wakeLock) {
+      try {
+        this.wakeLock.release();
+      } catch (err) {
+        console.warn('Wake Lock release failed:', err);
+      }
+      this.wakeLock = null;
+    }
+  }
+
+  async handleVisibilityChange() {
+    if (document.visibilityState === 'visible') {
+      await this.updateWakeLock();
+    }
   }
 
   /**
@@ -398,6 +440,8 @@ export class FastStreamClient extends EventEmitter {
     this.options.kiwiGuardBlockRedirects = options.kiwiGuardBlockRedirects !== false;
     this.options.kiwiGuardOverlayNeutralize = options.kiwiGuardOverlayNeutralize !== false;
     this.options.kiwiGuardOverlayZIndex = options.kiwiGuardOverlayZIndex !== false;
+    this.options.kiwiKeepScreenOn = options.kiwiKeepScreenOn !== false;
+    this.updateWakeLock().catch(console.error);
   }
 
   /**

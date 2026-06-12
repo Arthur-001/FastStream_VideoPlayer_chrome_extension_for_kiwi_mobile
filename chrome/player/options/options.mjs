@@ -65,6 +65,7 @@ const kiwiGuardBlockRedirects = document.getElementById('kiwiguardblockedirects'
 const kiwiGuardOverlayNeutralize = document.getElementById('kiwiguardoverlayneutralize');
 const kiwiGuardOverlayZIndex = document.getElementById('kiwiguardoverlayzindex');
 const kiwiGuardSubOptions = document.getElementById('kiwi-guard-sub-options');
+const kiwiKeepScreenOn = document.getElementById('kiwakeepscreenon');
 const resetMobileOptions = document.getElementById('resetmobileoptions');
 autoEnableURLSInput.setAttribute('autocapitalize', 'off');
 autoEnableURLSInput.setAttribute('autocomplete', 'off');
@@ -136,6 +137,7 @@ async function loadOptions(newOptions) {
   kiwiGuardBlockRedirects.checked = Options.kiwiGuardBlockRedirects !== false;
   kiwiGuardOverlayNeutralize.checked = Options.kiwiGuardOverlayNeutralize !== false;
   kiwiGuardOverlayZIndex.checked = Options.kiwiGuardOverlayZIndex !== false;
+  kiwiKeepScreenOn.checked = Options.kiwiKeepScreenOn !== false;
   updateKiwiGuardSubOptions();
 
   setSelectMenuValue(daltonizerType, Options.videoDaltonizerType);
@@ -592,6 +594,11 @@ kiwiGuardOverlayZIndex.addEventListener('change', () => {
   optionChanged();
 });
 
+kiwiKeepScreenOn.addEventListener('change', () => {
+  Options.kiwiKeepScreenOn = kiwiKeepScreenOn.checked;
+  optionChanged();
+});
+
 resetMobileOptions.addEventListener('click', () => {
   const mobileDefaults = {
     tapSeekSeconds: 10,
@@ -603,6 +610,7 @@ resetMobileOptions.addEventListener('click', () => {
     kiwiGuardBlockRedirects: true,
     kiwiGuardOverlayNeutralize: true,
     kiwiGuardOverlayZIndex: true,
+    kiwiKeepScreenOn: true,
   };
   Object.assign(Options, mobileDefaults);
   loadOptions(Options);

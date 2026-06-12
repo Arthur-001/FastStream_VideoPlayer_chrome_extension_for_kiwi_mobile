@@ -61,4 +61,5 @@ export const DefaultOptions = {
   kiwiGuardBlockRedirects: true,   // Block JS/HTML auto-redirects while player is active
   kiwiGuardOverlayNeutralize: true, // Make overlay ads non-interactive (pointer-events:none + opacity)
   kiwiGuardOverlayZIndex: true,    // Push overlays behind the player via z-index manipulation
+  kiwiKeepScreenOn: true,          // Keep the device screen active even when the video is paused
 };

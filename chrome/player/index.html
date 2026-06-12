@@ -100,6 +100,16 @@
                 opacity: 1;
             }
         }
+
+        /* === Kiwi Mobile: Volume Block Expanded Styles === */
+        .fluid_video_wrapper.fluid_player_layout_default .fluid_controls_container div:not(.reordering)>.volume_block.expanded .fluid_control_volume_container {
+            width: var(--volume-block-width);
+            visibility: visible;
+        }
+        .fluid_video_wrapper.fluid_player_layout_default .fluid_controls_container div:not(.reordering)>.volume_block.expanded .fluid_control_volume_container .fluid_control_volume .fluid_control_currentvolume .fluid_control_volume_currentpos {
+            width: 11px;
+            height: 11px;
+        }
     </style>
 </head>
 

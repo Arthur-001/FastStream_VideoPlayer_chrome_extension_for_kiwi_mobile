@@ -18,6 +18,7 @@ export class VolumeControls extends EventEmitter {
     this.volume = 1;
     this.previousVolume = 1;
     this.muted = false;
+    this.autoHideTimeout = null;
   }
 
   setupUI() {
@@ -27,7 +28,7 @@ export class VolumeControls extends EventEmitter {
       this.setVolume(1);
       e.stopPropagation();
     });
-    DOMElements.muteBtn.addEventListener('click', this.muteToggle.bind(this));
+    DOMElements.muteBtn.addEventListener('click', this.handleVolumeIconClick.bind(this));
     DOMElements.volumeBlock.tabIndex = 0;
     DOMElements.volumeBlock.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -92,6 +93,9 @@ export class VolumeControls extends EventEmitter {
       event.preventDefault();
     }
 
+    this.clearVolumeAutoHide();
+    DOMElements.volumeBlock.classList.add('expanded');
+
     const { clientX: initX } = this.getCoordinates(event);
     const initialPosition = Math.min(Math.max(initX - WebUtils.getOffsetLeft(DOMElements.volumeContainer) - 10, 0), DOMElements.volumeControlBar.clientWidth);
 
@@ -121,6 +125,7 @@ export class VolumeControls extends EventEmitter {
       if (event.cancelable) {
         event.preventDefault();
       }
+      this.clearVolumeAutoHide();
       const { clientX } = this.getCoordinates(event);
       const currentX = clientX - WebUtils.getOffsetLeft(DOMElements.volumeContainer) - 10;
       shiftVolume(currentX);
@@ -142,6 +147,7 @@ export class VolumeControls extends EventEmitter {
       if (!isNaN(currentX)) {
         shiftVolume(currentX);
       }
+      this.queueVolumeAutoHide();
     };
 
     DOMElements.playerContainer.addEventListener('mouseup', onVolumeBarMouseUp);
@@ -150,6 +156,48 @@ export class VolumeControls extends EventEmitter {
     DOMElements.playerContainer.addEventListener('touchmove', onVolumeBarMouseMove);
 
     event.stopPropagation();
+  }
+
+  handleVolumeIconClick(event) {
+    event.stopPropagation();
+    event.preventDefault();
+
+    const isVisible = DOMElements.volumeContainer && DOMElements.volumeContainer.clientWidth > 0;
+
+    if (!isVisible) {
+      DOMElements.volumeBlock.classList.add('expanded');
+      this.queueVolumeAutoHide();
+    } else {
+      this.muteToggle();
+      this.queueVolumeAutoHide();
+    }
+  }
+
+  onPlay() {
+    this.queueVolumeAutoHide();
+  }
+
+  onPause() {
+    this.clearVolumeAutoHide();
+  }
+
+  queueVolumeAutoHide() {
+    this.clearVolumeAutoHide();
+    if (this.client.state && this.client.state.playing) {
+      const timeoutMs = this.client.options.kiwiControlsHideTimeout ?? 2000;
+      this.autoHideTimeout = setTimeout(() => {
+        if (this.client.state && this.client.state.playing) {
+          DOMElements.volumeBlock.classList.remove('expanded');
+        }
+      }, timeoutMs);
+    }
+  }
+
+  clearVolumeAutoHide() {
+    if (this.autoHideTimeout) {
+      clearTimeout(this.autoHideTimeout);
+      this.autoHideTimeout = null;
+    }
   }
 
   getCoordinates(event) {

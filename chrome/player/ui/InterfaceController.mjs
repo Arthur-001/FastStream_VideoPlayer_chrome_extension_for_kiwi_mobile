@@ -1184,6 +1184,10 @@ export class InterfaceController {
     DOMElements.controlsContainer.classList.remove('fade_in');
     DOMElements.controlsContainer.classList.add('fade_out');
     DOMElements.progressContainer.classList.remove('freeze');
+    DOMElements.volumeBlock.classList.remove('expanded');
+    if (this.volumeControls) {
+      this.volumeControls.clearVolumeAutoHide();
+    }
   }
 
   toggleControlBar() {
@@ -1330,6 +1334,9 @@ export class InterfaceController {
     } else {
       this.hideBigPlayButton();
     }
+    if (this.volumeControls) {
+      this.volumeControls.onPlay();
+    }
   }
 
   pause() {
@@ -1340,6 +1347,9 @@ export class InterfaceController {
     DOMElements.playPauseButtonBigCircle.style.display = '';
     if (previousValue) {
       this.playPauseAnimation();
+    }
+    if (this.volumeControls) {
+      this.volumeControls.onPause();
     }
   }
 
