@@ -8,30 +8,46 @@ Kiwi Browser is one of the very few mobile browsers on Android that supports Chr
 
 ## What's New in This Fork
 
-### 📱 YouTube-Style Fullscreen Touch Seek
+### 📱 YouTube-Style Fullscreen Touch Seek & Gestures
 When the video player is in fullscreen:
 - **Double-tap the right side** → skip forward 10 seconds (customizable)
 - **Double-tap the left side** → rewind 10 seconds
-- **Keep tapping** to accumulate: 3 taps = +20s, 4 taps = +30s, and so on (just like YouTube)
+- **Keep tapping** to accumulate seek seconds: 3 taps = +20s, 4 taps = +30s, and so on (just like YouTube)
 - A YouTube-style ripple overlay shows how many seconds you're seeking
+- **Single-tap the center** → toggles play/pause with animation and controls bar
+- **Double-tap the center** → exits fullscreen mode
 
-### ▶ Single-Tap Center to Play/Pause
-- **Single-tap the center** of the screen in fullscreen → toggles play/pause with animation and controls bar
+Outside of fullscreen:
+- **Double-click anywhere** on the player → enters fullscreen mode (works when playing *or* paused)
 
-### 🛡️ Fullscreen Guard (Ad & Redirect Protection)
-Prevents websites from disrupting your viewing experience:
-- **Blocks JavaScript redirects** — websites can't navigate you away while the player is active
-- **Neutralizes overlay ads** — injected popups and banners are made non-interactive and invisible
-- **Pushes overlays behind the player** — high z-index elements are moved behind the player
-- All protections are individually toggleable in Settings → Mobile Controls
+### 🔊 Volume Icon Tap-to-Expand & Dragging
+- **Tap the volume icon** → first expands the collapsed volume progress slider on mobile. Once visible, subsequent taps toggle mute/unmute. On desktop, hover still expands the bar automatically and clicks toggle mute instantly.
+- **Hold & Drag Volume Bar** → slide your finger left/right on the volume progress bar to adjust volume in real-time. Viewport scroll is locked during dragging to prevent mobile swiping bugs.
+- **Auto-Hide** → when playing, the volume bar auto-hides after the configurable timeout (default: 2s). When the video is paused, it remains expanded.
 
-### ⚙️ All New Features Are Configurable
-A dedicated **Mobile Controls** section in the settings lets you customize:
-- Tap seek duration (default: 10 seconds)
-- Left/right tap zone width (default: 40% each, center 20%)
+### 🛡️ Fullscreen Guard (Auto-Redirect & Ad Blocker)
+Prevents websites from disrupting your viewing experience, active the moment you toggle the extension on (even before a video starts playing):
+- **Blocks JavaScript redirects** — overrides `window.open` and accessors (`Location.prototype.href`, `assign`, `replace`) to prevent sites from force-navigating you to malicious tabs.
+- **Smart Cross-Origin Filter** — only blocks redirects pointing to different origins or blank targets (like `about:blank`), keeping legitimate same-origin navigation fully functional.
+- **Main World Injection** — dynamically injects the blocker script at `document_start` to bypass browser isolated world barriers and intercept redirection scripts before they run.
+- **Neutralizes overlay ads** — banner ads and invisible click hijackers with high z-index are rendered non-interactive (`pointer-events: none`) and nearly invisible.
+- **Pushes overlays behind the player** — shifts high z-index elements behind the player container.
+- All guard protections are individually toggleable in settings.
+
+### 💡 Screen Wake Lock (Keep Screen Active)
+- **Keep Screen Active** — keeps the device screen awake even when the video is paused (ON by default). Automatically re-acquires the lock on foreground visibility transitions, preventing the screen from dimming/sleeping.
+
+### ⚙️ Configurable Options & Validation
+A dedicated **Mobile Controls** section in settings lets you customize:
+- Tap seek duration (default: 10s)
+- Left/right tap zone width (default: 40% each)
 - Tap accumulation window (default: 500ms)
-- Fullscreen guard settings (each toggle individually)
-- Reset any setting to its default value
+- Controls auto-hide timeout (default: 2000ms)
+- Fullscreen guard settings (master toggle + 3 sub-feature toggles)
+- Keep screen active (toggle)
+- **Real-Time Saves**: Settings changes are saved and propagate to the active player iframe in real-time.
+- **Interactive Validation**: Validates options inputs in real-time. Erasing values while typing is tolerated, but empty/invalid values on blur show clear red error warnings and borders.
+- **Reset Defaults** — button to restore all mobile settings back to factory defaults.
 
 ---
 
