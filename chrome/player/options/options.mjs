@@ -124,10 +124,14 @@ async function loadOptions(newOptions) {
 
   // Mobile Controls
   tapSeekSeconds.value = Options.tapSeekSeconds ?? 10;
+  clearInputError(tapSeekSeconds);
   tapZonePercent.value = Options.tapZonePercent ?? 40;
+  clearInputError(tapZonePercent);
   tapWindowMs.value = Options.tapWindowMs ?? 500;
+  clearInputError(tapWindowMs);
   tapZoneLockZone.checked = Options.tapZoneLockZone !== false;
   kiwiControlsHideTimeout.value = Options.kiwiControlsHideTimeout ?? 2000;
+  clearInputError(kiwiControlsHideTimeout);
   kiwiGuardEnabled.checked = Options.kiwiGuardEnabled !== false;
   kiwiGuardBlockRedirects.checked = Options.kiwiGuardBlockRedirects !== false;
   kiwiGuardOverlayNeutralize.checked = Options.kiwiGuardOverlayNeutralize !== false;
@@ -469,38 +473,103 @@ function updateKiwiGuardSubOptions() {
   kiwiGuardSubOptions.style.display = kiwiGuardEnabled.checked ? '' : 'none';
 }
 
-const onTapSeekSecondsChange = () => {
-  Options.tapSeekSeconds = Math.max(1, parseInt(tapSeekSeconds.value) || 10);
-  optionChanged();
-};
-tapSeekSeconds.addEventListener('change', onTapSeekSecondsChange);
-tapSeekSeconds.addEventListener('input', onTapSeekSecondsChange);
+function showInputError(inputEl, message) {
+  inputEl.classList.add('input-error-border');
+  
+  let errorEl = inputEl.parentNode.parentNode.querySelector('.kiwi-error-msg');
+  if (!errorEl) {
+    errorEl = document.createElement('div');
+    errorEl.className = 'kiwi-error-msg';
+    errorEl.style.color = '#ff4a4a';
+    errorEl.style.fontSize = '0.85em';
+    errorEl.style.marginTop = '4px';
+    errorEl.style.marginLeft = '4px';
+    inputEl.parentNode.after(errorEl);
+  }
+  errorEl.textContent = message;
+}
 
-const onTapZonePercentChange = () => {
-  Options.tapZonePercent = Math.min(45, Math.max(10, parseInt(tapZonePercent.value) || 40));
-  optionChanged();
-};
-tapZonePercent.addEventListener('change', onTapZonePercentChange);
-tapZonePercent.addEventListener('input', onTapZonePercentChange);
+function clearInputError(inputEl) {
+  inputEl.classList.remove('input-error-border');
+  const errorEl = inputEl.parentNode.parentNode.querySelector('.kiwi-error-msg');
+  if (errorEl) {
+    errorEl.remove();
+  }
+}
 
-const onTapWindowMsChange = () => {
-  Options.tapWindowMs = Math.min(1000, Math.max(200, parseInt(tapWindowMs.value) || 500));
-  optionChanged();
-};
-tapWindowMs.addEventListener('change', onTapWindowMsChange);
-tapWindowMs.addEventListener('input', onTapWindowMsChange);
+function validateNumberInput(inputEl, min, max, name, unit = "") {
+  const rawValue = inputEl.value.trim();
+
+  // Allow temporary empty field while typing
+  if (rawValue === "") {
+    return {
+      valid: false,
+      empty: true,
+      errorMsg: `${name} cannot be empty.`
+    };
+  }
+
+  // Only accept numbers
+  const parsed = parseInt(rawValue, 10);
+  if (isNaN(parsed) || !/^\d+$/.test(rawValue)) {
+    return {
+      valid: false,
+      empty: false,
+      errorMsg: `Please enter a valid whole number for ${name}.`
+    };
+  }
+
+  // Range check
+  if (parsed < min || parsed > max) {
+    return {
+      valid: false,
+      empty: false,
+      errorMsg: `${name} must be between ${min}${unit} and ${max}${unit}.`
+    };
+  }
+
+  return {
+    valid: true,
+    value: parsed
+  };
+}
+
+function handleMobileInputEvent(inputEl, key, min, max, name, unit = "", isBlur = false) {
+  const result = validateNumberInput(inputEl, min, max, name, unit);
+  
+  if (result.valid) {
+    clearInputError(inputEl);
+    Options[key] = result.value;
+    optionChanged();
+  } else {
+    if (result.empty && !isBlur) {
+      clearInputError(inputEl);
+    } else {
+      showInputError(inputEl, result.errorMsg);
+    }
+  }
+}
+
+tapSeekSeconds.addEventListener('input', () => handleMobileInputEvent(tapSeekSeconds, 'tapSeekSeconds', 1, 120, 'Tap Seek Duration', 's', false));
+tapSeekSeconds.addEventListener('change', () => handleMobileInputEvent(tapSeekSeconds, 'tapSeekSeconds', 1, 120, 'Tap Seek Duration', 's', true));
+tapSeekSeconds.addEventListener('blur', () => handleMobileInputEvent(tapSeekSeconds, 'tapSeekSeconds', 1, 120, 'Tap Seek Duration', 's', true));
+
+tapZonePercent.addEventListener('input', () => handleMobileInputEvent(tapZonePercent, 'tapZonePercent', 10, 45, 'Tap Zone Width', '%', false));
+tapZonePercent.addEventListener('change', () => handleMobileInputEvent(tapZonePercent, 'tapZonePercent', 10, 45, 'Tap Zone Width', '%', true));
+tapZonePercent.addEventListener('blur', () => handleMobileInputEvent(tapZonePercent, 'tapZonePercent', 10, 45, 'Tap Zone Width', '%', true));
+
+tapWindowMs.addEventListener('input', () => handleMobileInputEvent(tapWindowMs, 'tapWindowMs', 200, 1000, 'Tap Window', 'ms', false));
+tapWindowMs.addEventListener('change', () => handleMobileInputEvent(tapWindowMs, 'tapWindowMs', 200, 1000, 'Tap Window', 'ms', true));
+tapWindowMs.addEventListener('blur', () => handleMobileInputEvent(tapWindowMs, 'tapWindowMs', 200, 1000, 'Tap Window', 'ms', true));
 
 tapZoneLockZone.addEventListener('change', () => {
   Options.tapZoneLockZone = tapZoneLockZone.checked;
   optionChanged();
 });
 
-const onKiwiControlsHideTimeoutChange = () => {
-  Options.kiwiControlsHideTimeout = Math.min(10000, Math.max(500, parseInt(kiwiControlsHideTimeout.value) || 2000));
-  optionChanged();
-};
-kiwiControlsHideTimeout.addEventListener('change', onKiwiControlsHideTimeoutChange);
-kiwiControlsHideTimeout.addEventListener('input', onKiwiControlsHideTimeoutChange);
+kiwiControlsHideTimeout.addEventListener('input', () => handleMobileInputEvent(kiwiControlsHideTimeout, 'kiwiControlsHideTimeout', 500, 10000, 'Controls Auto-Hide Timeout', 'ms', false));
+kiwiControlsHideTimeout.addEventListener('change', () => handleMobileInputEvent(kiwiControlsHideTimeout, 'kiwiControlsHideTimeout', 500, 10000, 'Controls Auto-Hide Timeout', 'ms', true));
+kiwiControlsHideTimeout.addEventListener('blur', () => handleMobileInputEvent(kiwiControlsHideTimeout, 'kiwiControlsHideTimeout', 500, 10000, 'Controls Auto-Hide Timeout', 'ms', true));
 
 kiwiGuardEnabled.addEventListener('change', () => {
   Options.kiwiGuardEnabled = kiwiGuardEnabled.checked;
