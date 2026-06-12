@@ -834,8 +834,6 @@ export class InterfaceController {
         // Show controls immediately on first left/right tap
         if (zone !== 'center') {
           this.showControlBar();
-          // Update overlay text to show pending seek (0 seconds yet, just show zone)
-          triggerSeekOverlay(zone, 0);
         }
 
       } else {

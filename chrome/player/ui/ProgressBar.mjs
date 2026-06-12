@@ -18,6 +18,7 @@ export class ProgressBar extends EventEmitter {
     this.hasShownSkip = false;
     this.isSeeking = false;
     this.isMouseOverProgressbar = false;
+    this.isTouchInteraction = false;
 
     this.preciseMode = false;
     this.keepPreciseModeOpen = false;
@@ -102,6 +103,9 @@ export class ProgressBar extends EventEmitter {
     DOMElements.progressContainer.addEventListener('mouseenter', this.onProgressbarMouseEnter.bind(this));
     DOMElements.progressContainer.addEventListener('mouseleave', this.onProgressbarMouseLeave.bind(this));
     DOMElements.progressContainer.addEventListener('mousemove', this.onProgressbarMouseMove.bind(this));
+    DOMElements.progressContainer.addEventListener('touchstart', (e) => {
+      this.isTouchInteraction = true;
+    }, {passive: true});
 
     DOMElements.nextVideoBannerButton.addEventListener('click', (e) => {
       this.client.nextVideo();
@@ -444,11 +448,27 @@ export class ProgressBar extends EventEmitter {
     }
   }
 
-  onProgressbarMouseMove(event) {
-    const currentX = Math.min(Math.max(event.clientX - WebUtils.getOffsetLeft(DOMElements.progressContainer), 0), DOMElements.progressContainer.clientWidth);
+  getCoordinates(event) {
+    let clientX = event.clientX;
+    let clientY = event.clientY;
+
+    if (event.touches && event.touches.length > 0) {
+      clientX = event.touches[0].clientX;
+      clientY = event.touches[0].clientY;
+    } else if (event.changedTouches && event.changedTouches.length > 0) {
+      clientX = event.changedTouches[0].clientX;
+      clientY = event.changedTouches[0].clientY;
+    }
+
+    return { clientX, clientY };
+  }
+
+  onProgressbarMouseMove(event, overrideTime = null) {
+    const { clientX } = this.getCoordinates(event);
+    const currentX = Math.min(Math.max(clientX - WebUtils.getOffsetLeft(DOMElements.progressContainer), 0), DOMElements.progressContainer.clientWidth);
     const totalWidth = DOMElements.progressContainer.clientWidth;
 
-    const time = this.client.duration * currentX / totalWidth;
+    const time = overrideTime !== null ? overrideTime : (this.client.duration * currentX / totalWidth);
     const chapter = this.client.chapters.find((chapter) => chapter.startTime <= time && chapter.endTime >= time);
     const segment = this.skipSegments.find((segment) => segment.startTime <= time && segment.endTime >= time);
 
@@ -497,7 +517,7 @@ export class ProgressBar extends EventEmitter {
 
   onProgressbarMouseDown(event) {
     // check if left mouse button was pressed
-    if (event.button !== 0) {
+    if (event.button !== undefined && event.button !== 0) {
       return;
     }
 
@@ -513,7 +533,8 @@ export class ProgressBar extends EventEmitter {
 
     DOMElements.progressContainer.classList.add('freeze');
     // we need an initial position for touchstart events, as mouse up has no offset x for iOS
-    let initialPosition = Math.min(Math.max(event.clientX - WebUtils.getOffsetLeft(DOMElements.progressContainer), 0), DOMElements.progressContainer.clientWidth);
+    const { clientX: initX } = this.getCoordinates(event);
+    let initialPosition = Math.min(Math.max(initX - WebUtils.getOffsetLeft(DOMElements.progressContainer), 0), DOMElements.progressContainer.clientWidth);
 
     let preciseSavedTime = null;
     let preciseSavedPosition = null;
@@ -533,9 +554,10 @@ export class ProgressBar extends EventEmitter {
     };
 
     const onProgressbarMouseMove = (event) => {
-      this.hidePreview();
-      const currentY = Math.min(Math.max(event.clientY - WebUtils.getOffsetTop(DOMElements.progressContainer), -100), 50);
-      const currentX = Math.min(Math.max(event.clientX - WebUtils.getOffsetLeft(DOMElements.progressContainer), 0), DOMElements.progressContainer.clientWidth);
+      this.showPreview();
+      const { clientX, clientY } = this.getCoordinates(event);
+      const currentY = Math.min(Math.max(clientY - WebUtils.getOffsetTop(DOMElements.progressContainer), -100), 50);
+      const currentX = Math.min(Math.max(clientX - WebUtils.getOffsetLeft(DOMElements.progressContainer), 0), DOMElements.progressContainer.clientWidth);
       const isExpanded = DOMElements.playerContainer.classList.contains('expanded');
       const offset = isExpanded ? 0 : 80;
       if ((this.preciseMode || preciseSavedPosition !== null) && currentY > 20) {
@@ -551,7 +573,19 @@ export class ProgressBar extends EventEmitter {
       }
 
       initialPosition = NaN; // mouse up will fire after the move, we don't want to trigger the initial position in the event of iOS
+
+      const totalWidth = DOMElements.progressContainer.clientWidth;
+      let dragTime;
+      if (preciseSavedPosition !== null) {
+        dragTime = preciseSavedTime + 60 * (currentX - preciseSavedPosition) / totalWidth;
+      } else {
+        dragTime = this.client.duration * currentX / totalWidth;
+      }
+
       shiftTime(currentX);
+
+      // Call global mousemove handler to update preview position and load thumbnail with the correct dragTime!
+      this.onProgressbarMouseMove(event, dragTime);
     };
 
     const onProgressbarMouseUp = (event) => {
@@ -565,11 +599,18 @@ export class ProgressBar extends EventEmitter {
       }
       this.isSeeking = false;
 
-      if (this.isMouseOverProgressbar) {
+      if (this.isTouchInteraction) {
+        this.hidePreview();
+        this.isMouseOverProgressbar = false;
+        this.isTouchInteraction = false;
+      } else if (this.isMouseOverProgressbar) {
         this.showPreview();
+      } else {
+        this.hidePreview();
       }
 
-      let clickedX = Math.min(Math.max(event.clientX - WebUtils.getOffsetLeft(DOMElements.progressContainer), 0), DOMElements.progressContainer.clientWidth);
+      const { clientX: upX } = this.getCoordinates(event);
+      let clickedX = Math.min(Math.max(upX - WebUtils.getOffsetLeft(DOMElements.progressContainer), 0), DOMElements.progressContainer.clientWidth);
 
       if (isNaN(clickedX) && !isNaN(initialPosition)) {
         clickedX = initialPosition;
@@ -591,6 +632,10 @@ export class ProgressBar extends EventEmitter {
     DOMElements.playerContainer.addEventListener('mouseleave', onProgressbarMouseUp);
     DOMElements.playerContainer.addEventListener('mousemove', onProgressbarMouseMove);
     DOMElements.playerContainer.addEventListener('touchmove', onProgressbarMouseMove);
+
+    // Immediately show the preview and update its position on initial click/touch down
+    this.showPreview();
+    this.onProgressbarMouseMove(event);
   }
 
   onProgressbarMouseLeave() {
