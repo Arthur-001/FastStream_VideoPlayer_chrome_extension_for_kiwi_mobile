@@ -105,7 +105,8 @@ export class ProgressBar extends EventEmitter {
     DOMElements.progressContainer.addEventListener('mousemove', this.onProgressbarMouseMove.bind(this));
     DOMElements.progressContainer.addEventListener('touchstart', (e) => {
       this.isTouchInteraction = true;
-    }, {passive: true});
+      this.onProgressbarMouseDown(e);
+    }, {passive: false});
 
     DOMElements.nextVideoBannerButton.addEventListener('click', (e) => {
       this.client.nextVideo();
@@ -516,6 +517,9 @@ export class ProgressBar extends EventEmitter {
   }
 
   onProgressbarMouseDown(event) {
+    if (event.cancelable) {
+      event.preventDefault();
+    }
     // check if left mouse button was pressed
     if (event.button !== undefined && event.button !== 0) {
       return;
@@ -554,6 +558,9 @@ export class ProgressBar extends EventEmitter {
     };
 
     const onProgressbarMouseMove = (event) => {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
       this.showPreview();
       const { clientX, clientY } = this.getCoordinates(event);
       const currentY = Math.min(Math.max(clientY - WebUtils.getOffsetTop(DOMElements.progressContainer), -100), 50);
@@ -628,10 +635,10 @@ export class ProgressBar extends EventEmitter {
     };
     shiftTime(initialPosition);
     DOMElements.playerContainer.addEventListener('mouseup', onProgressbarMouseUp);
-    DOMElements.playerContainer.addEventListener('touchend', onProgressbarMouseUp);
+    DOMElements.playerContainer.addEventListener('touchend', onProgressbarMouseUp, {passive: false});
     DOMElements.playerContainer.addEventListener('mouseleave', onProgressbarMouseUp);
     DOMElements.playerContainer.addEventListener('mousemove', onProgressbarMouseMove);
-    DOMElements.playerContainer.addEventListener('touchmove', onProgressbarMouseMove);
+    DOMElements.playerContainer.addEventListener('touchmove', onProgressbarMouseMove, {passive: false});
 
     // Immediately show the preview and update its position on initial click/touch down
     this.showPreview();
