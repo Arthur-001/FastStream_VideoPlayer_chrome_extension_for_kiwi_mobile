@@ -469,30 +469,38 @@ function updateKiwiGuardSubOptions() {
   kiwiGuardSubOptions.style.display = kiwiGuardEnabled.checked ? '' : 'none';
 }
 
-tapSeekSeconds.addEventListener('change', () => {
+const onTapSeekSecondsChange = () => {
   Options.tapSeekSeconds = Math.max(1, parseInt(tapSeekSeconds.value) || 10);
   optionChanged();
-});
+};
+tapSeekSeconds.addEventListener('change', onTapSeekSecondsChange);
+tapSeekSeconds.addEventListener('input', onTapSeekSecondsChange);
 
-tapZonePercent.addEventListener('change', () => {
+const onTapZonePercentChange = () => {
   Options.tapZonePercent = Math.min(45, Math.max(10, parseInt(tapZonePercent.value) || 40));
   optionChanged();
-});
+};
+tapZonePercent.addEventListener('change', onTapZonePercentChange);
+tapZonePercent.addEventListener('input', onTapZonePercentChange);
 
-tapWindowMs.addEventListener('change', () => {
+const onTapWindowMsChange = () => {
   Options.tapWindowMs = Math.min(1000, Math.max(200, parseInt(tapWindowMs.value) || 500));
   optionChanged();
-});
+};
+tapWindowMs.addEventListener('change', onTapWindowMsChange);
+tapWindowMs.addEventListener('input', onTapWindowMsChange);
 
 tapZoneLockZone.addEventListener('change', () => {
   Options.tapZoneLockZone = tapZoneLockZone.checked;
   optionChanged();
 });
 
-kiwiControlsHideTimeout.addEventListener('change', () => {
+const onKiwiControlsHideTimeoutChange = () => {
   Options.kiwiControlsHideTimeout = Math.min(10000, Math.max(500, parseInt(kiwiControlsHideTimeout.value) || 2000));
   optionChanged();
-});
+};
+kiwiControlsHideTimeout.addEventListener('change', onKiwiControlsHideTimeoutChange);
+kiwiControlsHideTimeout.addEventListener('input', onKiwiControlsHideTimeoutChange);
 
 kiwiGuardEnabled.addEventListener('change', () => {
   Options.kiwiGuardEnabled = kiwiGuardEnabled.checked;

@@ -387,6 +387,17 @@ export class FastStreamClient extends EventEmitter {
     this.interfaceController.updateAutoNextIndicator();
 
     this.syncedAudioPlayer?.setVideoDelay(this.options.videoDelay);
+
+    // Mobile controls (Kiwi Browser)
+    this.options.tapSeekSeconds = options.tapSeekSeconds ?? 10;
+    this.options.tapZonePercent = options.tapZonePercent ?? 40;
+    this.options.tapWindowMs = options.tapWindowMs ?? 500;
+    this.options.tapZoneLockZone = options.tapZoneLockZone !== false;
+    this.options.kiwiControlsHideTimeout = options.kiwiControlsHideTimeout ?? 2000;
+    this.options.kiwiGuardEnabled = options.kiwiGuardEnabled !== false;
+    this.options.kiwiGuardBlockRedirects = options.kiwiGuardBlockRedirects !== false;
+    this.options.kiwiGuardOverlayNeutralize = options.kiwiGuardOverlayNeutralize !== false;
+    this.options.kiwiGuardOverlayZIndex = options.kiwiGuardOverlayZIndex !== false;
   }
 
   /**

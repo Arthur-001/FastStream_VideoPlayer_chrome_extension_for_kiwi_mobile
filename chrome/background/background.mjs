@@ -199,6 +199,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
       });
     });
+    // broadcast to all extension pages/iframes (e.g. player iframe)
+    try {
+      chrome.runtime.sendMessage({
+        type: MessageTypes.UPDATE_OPTIONS,
+        time: msg.time,
+      });
+    } catch (e) {
+      // Ignore in case no other extension context is listening
+    }
     return;
   }
 
