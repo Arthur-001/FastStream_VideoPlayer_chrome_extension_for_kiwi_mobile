@@ -88,4 +88,8 @@ export const DOMElements = {
   loopMenu: document.querySelector('.mainplayer .loop_menu'),
   skipForwardButton: document.querySelector('.mainplayer .fluid_control_skip_forward'),
   skipBackwardButton: document.querySelector('.mainplayer .fluid_control_skip_backward'),
+
+  // Kiwi Mobile: Seek overlays
+  kiwiSeekLeft: document.querySelector('.mainplayer .kiwi-seek-left'),
+  kiwiSeekRight: document.querySelector('.mainplayer .kiwi-seek-right'),
 };

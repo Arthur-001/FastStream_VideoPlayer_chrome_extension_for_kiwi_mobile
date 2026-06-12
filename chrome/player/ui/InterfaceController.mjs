@@ -695,7 +695,170 @@ export class InterfaceController {
       DOMElements.playerContainer.addEventListener('mouseup', mouseUpHandler, true);
       DOMElements.playerContainer.addEventListener('mouseleave', mouseUpHandler);
     });
+
+    // Kiwi Mobile: Setup touch gestures
+    this.setupTouchGestures();
   }
+
+  // ===========================================================================
+  // Kiwi Mobile: YouTube-style touch gesture handler
+  // ===========================================================================
+  setupTouchGestures() {
+    // Touch session state
+    let touchTapCount = 0;
+    let touchTapZone = null;  // 'left' | 'center' | 'right'
+    let touchTapTimeout = null;
+    let seekOverlayTimeout = null;
+
+    const triggerSeekOverlay = (zone, totalSeconds) => {
+      const overlay = zone === 'left' ? DOMElements.kiwiSeekLeft : DOMElements.kiwiSeekRight;
+      if (!overlay) return;
+
+      const textEl = overlay.querySelector('.kiwi-seek-text');
+      if (textEl) {
+        const prefix = zone === 'right' ? '+' : '-';
+        textEl.textContent = `${prefix}${Math.abs(totalSeconds)}s`;
+      }
+
+      // Re-trigger ripple animation by removing and re-adding class
+      overlay.classList.remove('kiwi-active');
+      // Force reflow
+      void overlay.offsetWidth;
+      overlay.classList.add('kiwi-active');
+
+      // Restart ripple elements
+      const ripples = overlay.querySelectorAll('.kiwi-seek-ripple');
+      ripples.forEach((r) => {
+        r.style.animation = 'none';
+        void r.offsetWidth;
+        r.style.animation = '';
+      });
+
+      clearTimeout(seekOverlayTimeout);
+      seekOverlayTimeout = setTimeout(() => {
+        overlay.classList.remove('kiwi-active');
+      }, 700);
+    };
+
+    const hideAllOverlays = () => {
+      if (DOMElements.kiwiSeekLeft) DOMElements.kiwiSeekLeft.classList.remove('kiwi-active');
+      if (DOMElements.kiwiSeekRight) DOMElements.kiwiSeekRight.classList.remove('kiwi-active');
+    };
+
+    const fireTapSession = () => {
+      clearTimeout(touchTapTimeout);
+      touchTapTimeout = null;
+
+      const zone = touchTapZone;
+      const count = touchTapCount;
+
+      // Reset state
+      touchTapCount = 0;
+      touchTapZone = null;
+
+      if (!zone) return;
+
+      const opts = this.client.options;
+
+      if (zone === 'center') {
+        // Single-tap center: toggle play/pause + toggle controls bar
+        this.playPauseToggle();
+        this.toggleControlBar();
+        this.playPauseAnimation();
+
+      } else if (count >= 2) {
+        // Double-tap or more: seek
+        const seekUnits = count - 1;
+        const seekSeconds = (opts.tapSeekSeconds ?? 10) * seekUnits;
+        const delta = zone === 'right' ? seekSeconds : -seekSeconds;
+
+        this.client.setSeekSave(false);
+        this.client.currentTime += delta;
+        this.client.setSeekSave(true);
+
+        triggerSeekOverlay(zone, seekSeconds);
+
+        // Show controls briefly then re-hide after seek
+        this.showControlBarTemporarily(2000);
+      }
+    };
+
+    DOMElements.videoContainer.addEventListener('touchstart', (e) => {
+      const isFullscreen = this.state.fullscreen || !!document.fullscreenElement;
+
+      if (!isFullscreen) {
+        // Not in fullscreen: let existing click handler do its thing
+        return;
+      }
+
+      // In fullscreen: intercept touch and handle ourselves
+      e.preventDefault();
+      e.stopPropagation();
+
+      const touch = e.changedTouches[0];
+      if (!touch) return;
+
+      const rect = DOMElements.videoContainer.getBoundingClientRect();
+      const relX = (touch.clientX - rect.left) / rect.width; // 0..1
+      const opts = this.client.options;
+      const zoneW = (opts.tapZonePercent ?? 40) / 100; // e.g. 0.40
+
+      let zone;
+      if (relX < zoneW) {
+        zone = 'left';
+      } else if (relX > (1 - zoneW)) {
+        zone = 'right';
+      } else {
+        zone = 'center';
+      }
+
+      const lockZone = opts.tapZoneLockZone !== false;
+
+      if (touchTapZone === null) {
+        // Start a new session
+        touchTapZone = zone;
+        touchTapCount = 1;
+
+        // Show controls immediately on first left/right tap
+        if (zone !== 'center') {
+          this.showControlBar();
+          // Update overlay text to show pending seek (0 seconds yet, just show zone)
+          triggerSeekOverlay(zone, 0);
+        }
+
+      } else {
+        // Ongoing session
+        if (lockZone && zone !== touchTapZone && touchTapZone !== 'center') {
+          // Zone switch ignored — keep original zone
+          zone = touchTapZone;
+        } else if (zone !== touchTapZone) {
+          // Zone switched and lock is off — fire current session, start new one
+          fireTapSession();
+          touchTapZone = zone;
+          touchTapCount = 1;
+          if (zone !== 'center') {
+            this.showControlBar();
+          }
+          clearTimeout(touchTapTimeout);
+          touchTapTimeout = setTimeout(fireTapSession, opts.tapWindowMs ?? 500);
+          return;
+        }
+        touchTapCount++;
+
+        // Update overlay with current accumulated seek amount
+        if (zone !== 'center' && touchTapCount >= 2) {
+          const seekSeconds = (opts.tapSeekSeconds ?? 10) * (touchTapCount - 1);
+          triggerSeekOverlay(zone, seekSeconds);
+        }
+      }
+
+      // Reset/extend the tap session timeout
+      clearTimeout(touchTapTimeout);
+      touchTapTimeout = setTimeout(fireTapSession, opts.tapWindowMs ?? 500);
+
+    }, {passive: false});
+  }
+
 
   toggleAutoplayNext() {
     this.client.options.autoplayNext = !this.client.options.autoplayNext;

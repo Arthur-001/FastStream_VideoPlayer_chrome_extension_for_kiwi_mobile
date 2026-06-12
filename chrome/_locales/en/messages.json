@@ -1,9 +1,9 @@
 {
     "extension_name": {
-        "message": "FastStream Video Player"
+        "message": "FastStream for Mobile - Kiwi Browser"
     },
     "extension_description": {
-        "message": "Stream without buffering. Fix bad video players on the internet."
+        "message": "FastStream customized for Kiwi Browser on Android. Touch-optimized with YouTube-style fullscreen seek gestures, single-tap play/pause, and protection against ads and page redirects."
     },
     "extension_toggle_label": {
         "message": "Toggle FastStream"

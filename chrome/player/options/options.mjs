@@ -53,6 +53,18 @@ const optionsSearchBar = document.getElementById('searchbar');
 const optionsResetButton = document.getElementById('resetsearch');
 // const ytclient = document.getElementById('ytclient');
 const maxdownloaders = document.getElementById('maxdownloaders');
+
+// Mobile Controls (Kiwi Browser)
+const tapSeekSeconds = document.getElementById('tapseekseconds');
+const tapZonePercent = document.getElementById('tapzonepercent');
+const tapWindowMs = document.getElementById('tapwindowms');
+const tapZoneLockZone = document.getElementById('tapzonelockzone');
+const kiwiGuardEnabled = document.getElementById('kiwiguardenabled');
+const kiwiGuardBlockRedirects = document.getElementById('kiwiguardblockedirects');
+const kiwiGuardOverlayNeutralize = document.getElementById('kiwiguardoverlayneutralize');
+const kiwiGuardOverlayZIndex = document.getElementById('kiwiguardoverlayzindex');
+const kiwiGuardSubOptions = document.getElementById('kiwi-guard-sub-options');
+const resetMobileOptions = document.getElementById('resetmobileoptions');
 autoEnableURLSInput.setAttribute('autocapitalize', 'off');
 autoEnableURLSInput.setAttribute('autocomplete', 'off');
 autoEnableURLSInput.setAttribute('autocorrect', 'off');
@@ -108,6 +120,17 @@ async function loadOptions(newOptions) {
   replaceDelay.value = Options.replaceDelay;
   maxdownloaders.value = Options.maximumDownloaders;
   ytPlayerID.value = Options.youtubePlayerID;
+
+  // Mobile Controls
+  tapSeekSeconds.value = Options.tapSeekSeconds ?? 10;
+  tapZonePercent.value = Options.tapZonePercent ?? 40;
+  tapWindowMs.value = Options.tapWindowMs ?? 500;
+  tapZoneLockZone.checked = Options.tapZoneLockZone !== false;
+  kiwiGuardEnabled.checked = Options.kiwiGuardEnabled !== false;
+  kiwiGuardBlockRedirects.checked = Options.kiwiGuardBlockRedirects !== false;
+  kiwiGuardOverlayNeutralize.checked = Options.kiwiGuardOverlayNeutralize !== false;
+  kiwiGuardOverlayZIndex.checked = Options.kiwiGuardOverlayZIndex !== false;
+  updateKiwiGuardSubOptions();
 
   setSelectMenuValue(daltonizerType, Options.videoDaltonizerType);
   setSelectMenuValue(clickAction, Options.singleClickAction);
@@ -436,6 +459,68 @@ miniSize.addEventListener('change', () => {
 
 maxdownloaders.addEventListener('change', () => {
   Options.maximumDownloaders = parseInt(maxdownloaders.value) || 0;
+  optionChanged();
+});
+
+// --- Mobile Controls wiring ---
+function updateKiwiGuardSubOptions() {
+  kiwiGuardSubOptions.style.display = kiwiGuardEnabled.checked ? '' : 'none';
+}
+
+tapSeekSeconds.addEventListener('change', () => {
+  Options.tapSeekSeconds = Math.max(1, parseInt(tapSeekSeconds.value) || 10);
+  optionChanged();
+});
+
+tapZonePercent.addEventListener('change', () => {
+  Options.tapZonePercent = Math.min(45, Math.max(10, parseInt(tapZonePercent.value) || 40));
+  optionChanged();
+});
+
+tapWindowMs.addEventListener('change', () => {
+  Options.tapWindowMs = Math.min(1000, Math.max(200, parseInt(tapWindowMs.value) || 500));
+  optionChanged();
+});
+
+tapZoneLockZone.addEventListener('change', () => {
+  Options.tapZoneLockZone = tapZoneLockZone.checked;
+  optionChanged();
+});
+
+kiwiGuardEnabled.addEventListener('change', () => {
+  Options.kiwiGuardEnabled = kiwiGuardEnabled.checked;
+  updateKiwiGuardSubOptions();
+  optionChanged();
+});
+
+kiwiGuardBlockRedirects.addEventListener('change', () => {
+  Options.kiwiGuardBlockRedirects = kiwiGuardBlockRedirects.checked;
+  optionChanged();
+});
+
+kiwiGuardOverlayNeutralize.addEventListener('change', () => {
+  Options.kiwiGuardOverlayNeutralize = kiwiGuardOverlayNeutralize.checked;
+  optionChanged();
+});
+
+kiwiGuardOverlayZIndex.addEventListener('change', () => {
+  Options.kiwiGuardOverlayZIndex = kiwiGuardOverlayZIndex.checked;
+  optionChanged();
+});
+
+resetMobileOptions.addEventListener('click', () => {
+  const mobileDefaults = {
+    tapSeekSeconds: 10,
+    tapZonePercent: 40,
+    tapWindowMs: 500,
+    tapZoneLockZone: true,
+    kiwiGuardEnabled: true,
+    kiwiGuardBlockRedirects: true,
+    kiwiGuardOverlayNeutralize: true,
+    kiwiGuardOverlayZIndex: true,
+  };
+  Object.assign(Options, mobileDefaults);
+  loadOptions(Options);
   optionChanged();
 });
 

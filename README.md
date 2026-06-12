@@ -1,8 +1,55 @@
 [![logotext1](https://github.com/user-attachments/assets/cefd20ba-606a-482c-a522-36b3419e93c7)](https://faststream.online)
 
-# FastStream
+# FastStream for Mobile — Kiwi Browser
 
-Tired of having videos buffer with slow internet speeds? Frustrated by a website's lack of accessibility features? This extension will replace videos on websites with a video player designed for your convenience. Say goodbye to buffering and hello to a more accessible video experience!
+> **This is a mobile-focused fork of [FastStream](https://github.com/Andrews54757/FastStream), customized for use with [Kiwi Browser](https://kiwibrowser.com/) on Android.**
+
+Kiwi Browser is one of the very few mobile browsers on Android that supports Chrome extensions natively. This fork takes the powerful FastStream video player and adds a full suite of **touch-optimized controls** and **fullscreen integrity protection** — features designed specifically for the mobile experience.
+
+## What's New in This Fork
+
+### 📱 YouTube-Style Fullscreen Touch Seek
+When the video player is in fullscreen:
+- **Double-tap the right side** → skip forward 10 seconds (customizable)
+- **Double-tap the left side** → rewind 10 seconds
+- **Keep tapping** to accumulate: 3 taps = +20s, 4 taps = +30s, and so on (just like YouTube)
+- A YouTube-style ripple overlay shows how many seconds you're seeking
+
+### ▶ Single-Tap Center to Play/Pause
+- **Single-tap the center** of the screen in fullscreen → toggles play/pause with animation and controls bar
+
+### 🛡️ Fullscreen Guard (Ad & Redirect Protection)
+Prevents websites from disrupting your viewing experience:
+- **Blocks JavaScript redirects** — websites can't navigate you away while the player is active
+- **Neutralizes overlay ads** — injected popups and banners are made non-interactive and invisible
+- **Pushes overlays behind the player** — high z-index elements are moved behind the player
+- All protections are individually toggleable in Settings → Mobile Controls
+
+### ⚙️ All New Features Are Configurable
+A dedicated **Mobile Controls** section in the settings lets you customize:
+- Tap seek duration (default: 10 seconds)
+- Left/right tap zone width (default: 40% each, center 20%)
+- Tap accumulation window (default: 500ms)
+- Fullscreen guard settings (each toggle individually)
+- Reset any setting to its default value
+
+---
+
+## Installation on Kiwi Browser
+
+1. Download [Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser) from the Play Store
+2. Download this repository (or the release ZIP) to your Android device
+3. Open Kiwi Browser and navigate to `chrome://extensions`
+4. Enable **Developer Mode**
+5. Tap **"Load unpacked"** and select the `chrome/` directory from this repository
+
+> **Note**: There is no automatic update system. Check back here for new releases.
+
+---
+
+## About the Original FastStream
+
+
 
 1. Watch videos without interruptions by pre-buffering the video in the background. Automatic fragmentation and parallel requests for up to 6x faster download speeds.
 2. Advanced subtitling features include: customizable subtitle appearance, built-in OpenSubtitles support to find subtitles on the internet, and an intuitive subtitle syncing tool to adjust subtitle timings on the fly.

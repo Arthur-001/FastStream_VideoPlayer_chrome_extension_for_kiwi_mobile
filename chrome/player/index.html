@@ -11,6 +11,73 @@
     <link rel="stylesheet" href="./assets/fluidplayer/css/fluidplayer.css">
     <link rel="stylesheet" href="./assets/sweetalert/css/sweetalert.css">
     <link rel="stylesheet" href="./assets/coloris/css/coloris.css">
+    <style>
+        /* === Kiwi Mobile: Seek Overlay Styles === */
+        .kiwi-seek-overlay {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 40%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            overflow: hidden;
+            z-index: 10;
+        }
+        .kiwi-seek-overlay.kiwi-active {
+            opacity: 1;
+        }
+        .kiwi-seek-left {
+            left: 0;
+            border-radius: 0 50% 50% 0;
+            background: radial-gradient(ellipse at 20% 50%, rgba(0,0,0,0.35) 0%, transparent 75%);
+        }
+        .kiwi-seek-right {
+            right: 0;
+            border-radius: 50% 0 0 50%;
+            background: radial-gradient(ellipse at 80% 50%, rgba(0,0,0,0.35) 0%, transparent 75%);
+        }
+        .kiwi-seek-ripple {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 3px solid rgba(255,255,255,0.6);
+            animation: none;
+            opacity: 0;
+        }
+        .kiwi-seek-ripple-2 {
+            animation-delay: 0.12s;
+        }
+        .kiwi-seek-overlay.kiwi-active .kiwi-seek-ripple {
+            animation: kiwi-ripple-anim 0.5s ease-out forwards;
+        }
+        .kiwi-seek-overlay.kiwi-active .kiwi-seek-ripple-2 {
+            animation: kiwi-ripple-anim 0.5s 0.12s ease-out forwards;
+        }
+        @keyframes kiwi-ripple-anim {
+            0%   { transform: scale(0.5); opacity: 0.8; }
+            100% { transform: scale(2.2); opacity: 0; }
+        }
+        .kiwi-seek-arrows {
+            font-size: 20px;
+            color: rgba(255,255,255,0.9);
+            letter-spacing: 2px;
+            margin-bottom: 4px;
+            text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+        }
+        .kiwi-seek-text {
+            font-size: 15px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 1px 6px rgba(0,0,0,0.9);
+            letter-spacing: 0.5px;
+        }
+    </style>
 </head>
 
 <body>
@@ -18,7 +85,21 @@
 
     <div class="mainplayer fluid_video_wrapper fluid_player_layout_default controls_visible" role="application"
         tabindex="-1">
-        <div class="video-container"></div>
+        <div class="video-container">
+            <!-- Kiwi Mobile: YouTube-style seek overlays -->
+            <div class="kiwi-seek-overlay kiwi-seek-left" aria-hidden="true">
+                <div class="kiwi-seek-ripple"></div>
+                <div class="kiwi-seek-ripple kiwi-seek-ripple-2"></div>
+                <div class="kiwi-seek-arrows">&#x25C4;&#x25C4;</div>
+                <span class="kiwi-seek-text"></span>
+            </div>
+            <div class="kiwi-seek-overlay kiwi-seek-right" aria-hidden="true">
+                <div class="kiwi-seek-ripple"></div>
+                <div class="kiwi-seek-ripple kiwi-seek-ripple-2"></div>
+                <div class="kiwi-seek-arrows">&#x25BA;&#x25BA;</div>
+                <span class="kiwi-seek-text"></span>
+            </div>
+        </div>
         <div class="fluid_subtitles_container"></div>
         <div class="fluid_controls_container fade_in">
             <div class="skip_button" style="display: none;" tabindex="0" role="button"></div>

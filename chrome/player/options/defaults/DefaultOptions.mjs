@@ -47,4 +47,17 @@ export const DefaultOptions = {
   videoDelay: 0,
   maximumDownloaders: 6,
   youtubePlayerID: '',
+
+  // --- Mobile Controls (Kiwi Browser) ---
+  // Touch gesture seek settings
+  tapSeekSeconds: 10,       // Seconds to seek per additional tap
+  tapZonePercent: 40,       // Width % of each left/right tap zone (center = 100 - 2*tapZonePercent)
+  tapWindowMs: 500,         // Tap accumulation window in milliseconds
+  tapZoneLockZone: true,    // When true, zone switches mid-session are ignored (finish original direction)
+
+  // Fullscreen Guard settings
+  kiwiGuardEnabled: true,          // Master toggle for all guard features
+  kiwiGuardBlockRedirects: true,   // Block JS/HTML auto-redirects while player is active
+  kiwiGuardOverlayNeutralize: true, // Make overlay ads non-interactive (pointer-events:none + opacity)
+  kiwiGuardOverlayZIndex: true,    // Push overlays behind the player via z-index manipulation
 };

@@ -1405,4 +1405,239 @@
     type: MessageTypes.FRAME_ADDED,
     url: window.location.href,
   });
+
+  // ===========================================================================
+  // Kiwi Mobile: KiwiFullscreenGuard
+  // Prevents websites from redirecting, injecting overlays, or disrupting
+  // the FastStream player. Uses workarounds (not network blocking).
+  // ===========================================================================
+  class KiwiFullscreenGuard {
+    constructor() {
+      this._active = false;
+      this._originals = {};
+      this._observer = null;
+      this._beforeunloadInterval = null;
+      this._opts = {
+        kiwiGuardEnabled: true,
+        kiwiGuardBlockRedirects: true,
+        kiwiGuardOverlayNeutralize: true,
+        kiwiGuardOverlayZIndex: true,
+      };
+      // Player iframe z-index (from fillScreenIframe: 2147483647)
+      this._playerZIndex = 2147483646;
+    }
+
+    updateOptions(opts) {
+      Object.assign(this._opts, opts);
+      if (!this._opts.kiwiGuardEnabled && this._active) {
+        this.deactivate();
+      } else if (this._opts.kiwiGuardEnabled && !this._active && Activated) {
+        this.activate();
+      }
+    }
+
+    activate() {
+      if (this._active) return;
+      if (!this._opts.kiwiGuardEnabled) return;
+      this._active = true;
+
+      if (this._opts.kiwiGuardBlockRedirects) {
+        this._installRedirectBlock();
+      }
+      if (this._opts.kiwiGuardOverlayNeutralize || this._opts.kiwiGuardOverlayZIndex) {
+        this._installOverlayGuard();
+      }
+    }
+
+    deactivate() {
+      if (!this._active) return;
+      this._active = false;
+
+      // Restore originals
+      const o = this._originals;
+      try {
+        if (o.open) window.open = o.open;
+        if (o.pushState) history.pushState = o.pushState;
+        if (o.replaceState) history.replaceState = o.replaceState;
+        if (o.exitFullscreen) document.exitFullscreen = o.exitFullscreen;
+        if (o.locationDescriptor) {
+          try { Object.defineProperty(window, 'location', o.locationDescriptor); } catch (e) {}
+        }
+      } catch (e) { /* ignore */ }
+
+      if (this._observer) {
+        this._observer.disconnect();
+        this._observer = null;
+      }
+
+      if (this._beforeunloadInterval) {
+        clearInterval(this._beforeunloadInterval);
+        this._beforeunloadInterval = null;
+      }
+
+      this._originals = {};
+    }
+
+    _installRedirectBlock() {
+      const o = this._originals;
+
+      // Override window.open (popups)
+      o.open = window.open;
+      window.open = (...args) => {
+        console.log('[KiwiGuard] Blocked window.open(', args[0], ')');
+        return null;
+      };
+
+      // Override history.pushState / replaceState (SPA navigation)
+      o.pushState = history.pushState.bind(history);
+      history.pushState = (...args) => {
+        // Allow but log — full block causes issues on SPAs like YouTube
+        // Instead we just suppress and don't navigate
+        console.log('[KiwiGuard] Suppressed history.pushState');
+      };
+
+      o.replaceState = history.replaceState.bind(history);
+      history.replaceState = (...args) => {
+        console.log('[KiwiGuard] Suppressed history.replaceState');
+      };
+
+      // Override document.exitFullscreen to prevent page scripts from exiting
+      o.exitFullscreen = document.exitFullscreen ? document.exitFullscreen.bind(document) : null;
+      document.exitFullscreen = () => {
+        console.log('[KiwiGuard] Blocked document.exitFullscreen()');
+        return Promise.resolve();
+      };
+
+      // Override window.location.href assignment via property descriptor
+      try {
+        o.locationDescriptor = Object.getOwnPropertyDescriptor(window, 'location') ||
+          Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window), 'location');
+        const guardedHref = window.location.href;
+        Object.defineProperty(window, 'location', {
+          get: () => ({
+            href: guardedHref,
+            assign: () => console.log('[KiwiGuard] Blocked location.assign()'),
+            replace: () => console.log('[KiwiGuard] Blocked location.replace()'),
+            reload: () => console.log('[KiwiGuard] Blocked location.reload()'),
+            toString: () => guardedHref,
+          }),
+          configurable: true,
+        });
+      } catch (e) {
+        console.log('[KiwiGuard] Could not override window.location:', e.message);
+      }
+
+      // Periodically clear beforeunload
+      window.onbeforeunload = null;
+      this._beforeunloadInterval = setInterval(() => {
+        window.onbeforeunload = null;
+      }, 2000);
+    }
+
+    _installOverlayGuard() {
+      // Find the FastStream iframe element z-index to use as threshold
+      const playerZIndex = this._playerZIndex;
+
+      const neutralizeEl = (el) => {
+        if (!el || el.nodeType !== 1) return;
+
+        // Skip script, style, head-related elements
+        const tag = el.tagName ? el.tagName.toLowerCase() : '';
+        if (['script', 'style', 'link', 'meta', 'head', 'html', 'body', 'iframe'].includes(tag)) return;
+
+        try {
+          const cs = window.getComputedStyle(el);
+          const z = parseInt(cs.zIndex);
+          const pos = cs.position;
+
+          // Only target positioned elements with high z-index that float above everything
+          if (!isNaN(z) && z > playerZIndex && (pos === 'fixed' || pos === 'absolute' || pos === 'sticky')) {
+            if (this._opts.kiwiGuardOverlayNeutralize) {
+              el.style.setProperty('pointer-events', 'none', 'important');
+              el.style.setProperty('opacity', '0.01', 'important');
+            }
+            if (this._opts.kiwiGuardOverlayZIndex) {
+              el.style.setProperty('z-index', String(playerZIndex - 1), 'important');
+            }
+            console.log('[KiwiGuard] Neutralized overlay element:', tag, 'z-index was', z);
+          }
+        } catch (e) { /* ignore cross-origin */ }
+      };
+
+      // Scan existing DOM
+      try {
+        document.querySelectorAll('*').forEach(neutralizeEl);
+      } catch (e) {}
+
+      // Watch for newly injected elements
+      this._observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          for (const node of mutation.addedNodes) {
+            if (node.nodeType === 1) {
+              neutralizeEl(node);
+              // Also check children
+              try {
+                node.querySelectorAll('*').forEach(neutralizeEl);
+              } catch (e) {}
+            }
+          }
+        }
+      });
+
+      this._observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+      });
+    }
+  }
+
+  // Instantiate the guard
+  const kiwiGuard = new KiwiFullscreenGuard();
+
+  // Load guard options from storage and keep in sync
+  function loadKiwiGuardOptions() {
+    chrome.storage.local.get('options', (result) => {
+      try {
+        const opts = result && result.options ? JSON.parse(result.options) : {};
+        kiwiGuard.updateOptions({
+          kiwiGuardEnabled: opts.kiwiGuardEnabled !== false,
+          kiwiGuardBlockRedirects: opts.kiwiGuardBlockRedirects !== false,
+          kiwiGuardOverlayNeutralize: opts.kiwiGuardOverlayNeutralize !== false,
+          kiwiGuardOverlayZIndex: opts.kiwiGuardOverlayZIndex !== false,
+        });
+      } catch (e) {
+        kiwiGuard.updateOptions({});
+      }
+    });
+  }
+
+  // Watch for storage changes (settings updated by user)
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.options) {
+      loadKiwiGuardOptions();
+    }
+  });
+
+  // Activate/deactivate guard based on player active state
+  // The guard auto-activates when any frame announces Activated=true
+  const _origSendToOtherContents = sendToOtherContents;
+  // Hook into the existing Activated flag changes
+  // We watch sendToOtherContents calls with type 'active-state'
+  // by monitoring Activated variable changes via the existing flow.
+  // The simplest approach: poll Activated state and drive guard accordingly.
+  let _guardActivationInterval = setInterval(() => {
+    if (Activated && !kiwiGuard._active && kiwiGuard._opts.kiwiGuardEnabled) {
+      loadKiwiGuardOptions();
+      // Guard will activate after options are loaded via updateOptions()
+      // But also trigger directly if already loaded:
+      if (kiwiGuard._opts.kiwiGuardEnabled) {
+        kiwiGuard.activate();
+      }
+    } else if (!Activated && kiwiGuard._active) {
+      kiwiGuard.deactivate();
+    }
+  }, 1000);
+
+  // Load options on startup
+  loadKiwiGuardOptions();
 })();

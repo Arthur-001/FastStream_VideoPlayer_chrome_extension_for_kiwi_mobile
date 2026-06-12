@@ -339,9 +339,102 @@
                     </div>
                 </div>
             </div>
+
         </section>
 
+        <section class="options-section" data-search-section="mobile">
+            <div class="section-heading">
+                <h1>Mobile Controls (Kiwi Browser)</h1>
+                <span class="section-count" aria-live="polite"></span>
+            </div>
+            <p>Touch gesture and fullscreen protection settings for Kiwi Browser on Android. All settings can be reset to their defaults.</p>
 
+            <div id="mobile-touch-settings">
+                <h2 style="margin-top: 12px; margin-bottom: 4px; font-size: 1em; opacity: 0.8;">Touch Gesture Seek</h2>
+
+                <div class="search-target-remove">
+                    <br>
+                    <div class="option grid2">
+                        <div class="label search-target-text">Tap Seek Duration (seconds)</div>
+                        <input class="number" type="number" id="tapseekseconds" min="1" max="120" step="1">
+                    </div>
+                    <small style="margin-left: 4px; opacity: 0.6;">How many seconds each additional tap seeks. Default: 10</small>
+                </div>
+
+                <div class="search-target-remove">
+                    <br>
+                    <div class="option grid2">
+                        <div class="label search-target-text">Tap Zone Width (%)</div>
+                        <input class="number" type="number" id="tapzonepercent" min="10" max="45" step="1">
+                    </div>
+                    <small style="margin-left: 4px; opacity: 0.6;">Width of each left/right tap zone as % of screen width. Center zone = 100 − 2×this value. Default: 40</small>
+                </div>
+
+                <div class="search-target-remove">
+                    <br>
+                    <div class="option grid2">
+                        <div class="label search-target-text">Tap Window (ms)</div>
+                        <input class="number" type="number" id="tapwindowms" min="200" max="1000" step="50">
+                    </div>
+                    <small style="margin-left: 4px; opacity: 0.6;">How long to wait after the last tap before the seek fires. Default: 500ms</small>
+                </div>
+
+                <div class="search-target-remove">
+                    <br>
+                    <div class="option grid1">
+                        <input type="checkbox" id="tapzonelockzone">
+                        <div class="label search-target-text">Lock zone mid-session</div>
+                    </div>
+                    <small style="margin-left: 4px; opacity: 0.6;">When enabled, switching tap sides mid-session is ignored — the original direction finishes first. Default: ON</small>
+                </div>
+            </div>
+
+            <div id="mobile-guard-settings">
+                <h2 style="margin-top: 16px; margin-bottom: 4px; font-size: 1em; opacity: 0.8;">Fullscreen Guard</h2>
+
+                <div class="search-target-remove">
+                    <br>
+                    <div class="option grid1">
+                        <input type="checkbox" id="kiwiguardenabled">
+                        <div class="label search-target-text">Enable Fullscreen Guard</div>
+                    </div>
+                    <small style="margin-left: 4px; opacity: 0.6;">Master toggle for all protection features below. Default: ON</small>
+                </div>
+
+                <div id="kiwi-guard-sub-options">
+                    <div class="search-target-remove">
+                        <br>
+                        <div class="option grid1">
+                            <input type="checkbox" id="kiwiguardblockedirects">
+                            <div class="label search-target-text">Block Auto-Redirects</div>
+                        </div>
+                        <small style="margin-left: 4px; opacity: 0.6;">Prevent JavaScript and HTML from navigating away from the page while the player is active. Default: ON</small>
+                    </div>
+
+                    <div class="search-target-remove">
+                        <br>
+                        <div class="option grid1">
+                            <input type="checkbox" id="kiwiguardoverlayneutralize">
+                            <div class="label search-target-text">Neutralize Overlay Ads</div>
+                        </div>
+                        <small style="margin-left: 4px; opacity: 0.6;">Make overlay elements non-interactive (pointer-events: none) and nearly invisible. Default: ON</small>
+                    </div>
+
+                    <div class="search-target-remove">
+                        <br>
+                        <div class="option grid1">
+                            <input type="checkbox" id="kiwiguardoverlayzindex">
+                            <div class="label search-target-text">Push Overlays Behind Player</div>
+                        </div>
+                        <small style="margin-left: 4px; opacity: 0.6;">Force high z-index elements behind the player using z-index manipulation. Default: ON</small>
+                    </div>
+                </div>
+
+                <br>
+                <button id="resetmobileoptions">Reset Mobile Controls to Defaults</button>
+            </div>
+
+        </section>
 
         <section class="options-section" data-search-section="keybinds">
             <div class="section-heading">
