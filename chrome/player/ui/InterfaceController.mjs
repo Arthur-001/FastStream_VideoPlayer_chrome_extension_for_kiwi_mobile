@@ -199,6 +199,12 @@ export class InterfaceController {
 
   reset() {
     DOMElements.videoContainer.replaceChildren();
+    if (DOMElements.kiwiSeekLeft) {
+      DOMElements.videoContainer.appendChild(DOMElements.kiwiSeekLeft);
+    }
+    if (DOMElements.kiwiSeekRight) {
+      DOMElements.videoContainer.appendChild(DOMElements.kiwiSeekRight);
+    }
 
     this.resetPreviewVideo();
     this.progressBar.reset();
@@ -248,6 +254,12 @@ export class InterfaceController {
   addVideo(video) {
     this.dressVideo(video);
     DOMElements.videoContainer.appendChild(video);
+    if (DOMElements.kiwiSeekLeft) {
+      DOMElements.videoContainer.appendChild(DOMElements.kiwiSeekLeft);
+    }
+    if (DOMElements.kiwiSeekRight) {
+      DOMElements.videoContainer.appendChild(DOMElements.kiwiSeekRight);
+    }
   }
 
   addPreviewVideo(video) {
@@ -1307,11 +1319,19 @@ export class InterfaceController {
   play() {
     const previousValue = this.state.playing;
     this.state.playing = true;
-    this.hideBigPlayButton();
     this.updatePlayPauseButton();
     if (!previousValue) {
+      DOMElements.playPauseButtonBigCircle.style.display = '';
       this.playPauseAnimation();
+      clearTimeout(this.hideBigPlayTimeout);
+      this.hideBigPlayTimeout = setTimeout(() => {
+        if (this.state.playing) {
+          this.hideBigPlayButton();
+        }
+      }, 450);
       this.queueControlsHide();
+    } else {
+      this.hideBigPlayButton();
     }
   }
 
@@ -1320,6 +1340,7 @@ export class InterfaceController {
     this.state.playing = false;
     this.updatePlayPauseButton();
     this.showControlBar();
+    DOMElements.playPauseButtonBigCircle.style.display = '';
     if (previousValue) {
       this.playPauseAnimation();
     }

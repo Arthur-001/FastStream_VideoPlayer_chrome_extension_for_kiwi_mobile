@@ -26,7 +26,7 @@
             opacity: 0;
             transition: opacity 0.2s ease;
             overflow: hidden;
-            z-index: 10;
+            z-index: 100;
         }
         .kiwi-seek-overlay.kiwi-active {
             opacity: 1;
@@ -76,6 +76,29 @@
             color: #fff;
             text-shadow: 0 1px 6px rgba(0,0,0,0.9);
             letter-spacing: 0.5px;
+        }
+
+        /* === Kiwi Mobile: Play/Pause Circle Animation === */
+        .fluid_control_playpause_big_circle {
+            transition: transform 0.3s ease, opacity 0.3s ease, background-color 0.2s ease;
+        }
+        .fluid_control_playpause_big_circle.transform-active {
+            animation: kiwi-playpause-bounce 0.45s ease-out;
+        }
+        @keyframes kiwi-playpause-bounce {
+            0% {
+                transform: scale(0.8);
+                opacity: 0.5;
+            }
+            50% {
+                transform: scale(1.3);
+                opacity: 1;
+                background-color: rgba(255, 255, 255, 0.4);
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
         }
     </style>
 </head>

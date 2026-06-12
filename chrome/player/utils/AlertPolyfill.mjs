@@ -147,22 +147,24 @@ export class AlertPolyfill {
       if (result.isConfirmed) {
         const url = `https://github.com/Andrews54757/FastStream/wiki/Enabling-UserScripts-for-Youtube-Playback`;
         if (EnvUtils.isExtension()) {
-          // try {
-          //   await chrome.permissions.request({
-          //     permissions: ['userScripts'],
-          //   });
+          try {
+            const granted = await chrome.permissions.request({
+              permissions: ['userScripts'],
+            });
 
-          //   // ask background again
-          //   const result = await chrome.runtime.sendMessage({
-          //     type: MessageTypes.ENSURE_YT_USERSCRIPT,
-          //   });
-          //   if (result.success) {
-          //     AlertPolyfill.toast('success', Localize.getMessage('yterror_permission_granted'));
-          //     return;
-          //   }
-          // } catch (e) {
-
-          // }
+            if (granted) {
+              // ask background again
+              const result = await chrome.runtime.sendMessage({
+                type: MessageTypes.ENSURE_YT_USERSCRIPT,
+              });
+              if (result.success) {
+                AlertPolyfill.toast('success', Localize.getMessage('yterror_permission_granted'));
+                return;
+              }
+            }
+          } catch (e) {
+            console.error('Failed to request userScripts permission:', e);
+          }
           chrome?.tabs?.create({
             url,
           });
