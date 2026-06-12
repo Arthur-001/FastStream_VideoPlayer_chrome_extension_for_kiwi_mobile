@@ -19,7 +19,121 @@
     FRAME_REMOVED: 'FRAME_REMOVED',
     SEND_TO_CONTENT: 'SEND_TO_CONTENT',
     MESSAGE_FROM_CONTENT: 'MESSAGE_FROM_CONTENT',
+    CHECK_TAB_STATUS: 'CHECK_TAB_STATUS',
+    TAB_STATUS_CHANGED: 'TAB_STATUS_CHANGED',
   };
+
+  // ===========================================================================
+  // Kiwi Mobile: Redirection Guard (Main World script injection)
+  // Intercepts window.open, Location.prototype, and document.exitFullscreen
+  // in the webpage's main world context to block malicious ads and redirects.
+  // ===========================================================================
+  const mainWorldScript = `
+    (function() {
+      const originalOpen = window.open;
+      const originalExitFullscreen = document.exitFullscreen;
+      const locProto = Location.prototype;
+      const originalHrefDesc = Object.getOwnPropertyDescriptor(locProto, 'href');
+      const originalAssign = locProto.assign;
+      const originalReplace = locProto.replace;
+
+      function isDifferentOrigin(targetUrl) {
+        if (!targetUrl) return false;
+        try {
+          const target = new URL(targetUrl, window.location.href);
+          return target.origin !== window.location.origin;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      function getOptions() {
+        if (window.__kiwiGuardOptions) {
+          return window.__kiwiGuardOptions;
+        }
+        try {
+          const attr = document.documentElement.getAttribute('data-kiwi-guard');
+          return attr ? JSON.parse(attr) : { enabled: false, blockRedirects: false };
+        } catch (e) {
+          return { enabled: false, blockRedirects: false };
+        }
+      }
+
+      window.open = function(...args) {
+        const opts = getOptions();
+        if (opts.enabled && opts.blockRedirects) {
+          const targetUrl = args[0];
+          if (!targetUrl || targetUrl === 'about:blank' || isDifferentOrigin(targetUrl)) {
+            console.log('[KiwiGuard] Blocked cross-origin/blank window.open:', targetUrl);
+            return null;
+          }
+        }
+        return originalOpen.apply(window, args);
+      };
+
+      if (originalHrefDesc && originalHrefDesc.set) {
+        Object.defineProperty(locProto, 'href', {
+          get: function() {
+            return originalHrefDesc.get.call(this);
+          },
+          set: function(val) {
+            const opts = getOptions();
+            if (opts.enabled && opts.blockRedirects && isDifferentOrigin(val)) {
+              console.log('[KiwiGuard] Blocked cross-origin Location.prototype.href setter:', val);
+              return;
+            }
+            originalHrefDesc.set.call(this, val);
+          },
+          configurable: true,
+        });
+      }
+
+      locProto.assign = function(val) {
+        const opts = getOptions();
+        if (opts.enabled && opts.blockRedirects && isDifferentOrigin(val)) {
+          console.log('[KiwiGuard] Blocked cross-origin Location.prototype.assign():', val);
+          return;
+        }
+        return originalAssign.call(this, val);
+      };
+
+      locProto.replace = function(val) {
+        const opts = getOptions();
+        if (opts.enabled && opts.blockRedirects && isDifferentOrigin(val)) {
+          console.log('[KiwiGuard] Blocked cross-origin Location.prototype.replace():', val);
+          return;
+        }
+        return originalReplace.call(this, val);
+      };
+
+      document.exitFullscreen = function(...args) {
+        const opts = getOptions();
+        if (opts.enabled && opts.playerActive) {
+          console.log('[KiwiGuard] Blocked exitFullscreen while player is active');
+          return Promise.resolve();
+        }
+        return originalExitFullscreen ? originalExitFullscreen.apply(document, args) : Promise.resolve();
+      };
+
+      setInterval(() => {
+        const opts = getOptions();
+        if (opts.enabled && opts.blockRedirects) {
+          if (window.onbeforeunload) {
+            window.onbeforeunload = null;
+          }
+        }
+      }, 1000);
+    })();
+  `;
+
+  try {
+    const script = document.createElement('script');
+    script.textContent = mainWorldScript;
+    (document.head || document.documentElement).appendChild(script);
+    script.remove();
+  } catch (e) {
+    console.error('[KiwiGuard] Failed to inject main world guard:', e);
+  }
 
   const iframeMap = new Map();
   const replacedPlayerQueue = [];
@@ -27,6 +141,40 @@
   const linkRequests = new Map();
   let MiniplayerCooldown = 0;
   let Activated = false;
+  let extensionEnabled = false;
+
+  function updateKiwiGuardDOMState() {
+    const guardOpts = (typeof kiwiGuard !== 'undefined') ? kiwiGuard._opts : {
+      kiwiGuardEnabled: true,
+      kiwiGuardBlockRedirects: true,
+    };
+    const state = {
+      enabled: guardOpts.kiwiGuardEnabled && extensionEnabled,
+      blockRedirects: guardOpts.kiwiGuardBlockRedirects,
+      playerActive: Activated,
+    };
+    try {
+      document.documentElement.setAttribute('data-kiwi-guard', JSON.stringify(state));
+      const script = document.createElement('script');
+      script.textContent = `window.__kiwiGuardOptions = ${JSON.stringify(state)};`;
+      (document.head || document.documentElement).appendChild(script);
+      script.remove();
+    } catch (e) {}
+  }
+
+  // Query initial tab status on load
+  try {
+    chrome.runtime.sendMessage({type: 'CHECK_TAB_STATUS'}, (response) => {
+      if (chrome.runtime.lastError) return;
+      if (response && response.isOn !== undefined) {
+        extensionEnabled = response.isOn;
+        updateKiwiGuardDOMState();
+        if (extensionEnabled) {
+          loadKiwiGuardOptions();
+        }
+      }
+    });
+  } catch (e) {}
 
   let resizeDebounce = Date.now();
   const Config = {
@@ -94,6 +242,18 @@
       return handlePlaylistNavigation(request, sender, sendResponse);
     } else if (!Config.hasCustomPlaylist && request.type === MessageTypes.PLAYLIST_POLL) {
       return pollPlaylistButtons(request, sender, sendResponse);
+    } else if (request.type === MessageTypes.TAB_STATUS_CHANGED) {
+      extensionEnabled = !!request.isOn;
+      updateKiwiGuardDOMState();
+      if (extensionEnabled) {
+        loadKiwiGuardOptions();
+      } else {
+        if (typeof kiwiGuard !== 'undefined') {
+          kiwiGuard.deactivate();
+        }
+      }
+      sendResponse('ok');
+      return;
     } else if (request.type === MessageTypes.MESSAGE_FROM_CONTENT && request.destination === 'main') {
       return handleContentMessage(request, sender, sendResponse);
     }
@@ -317,6 +477,7 @@
       }
       if (!Activated) {
         Activated = true;
+        updateKiwiGuardDOMState();
         sendToOtherContents({
           type: 'active-state',
           value: true,
@@ -548,6 +709,7 @@
 
     if (Activated) {
       Activated = false;
+      updateKiwiGuardDOMState();
       sendToOtherContents({
         type: 'active-state',
         value: false,
@@ -1429,109 +1591,34 @@
 
     updateOptions(opts) {
       Object.assign(this._opts, opts);
+      updateKiwiGuardDOMState();
       if (!this._opts.kiwiGuardEnabled && this._active) {
         this.deactivate();
-      } else if (this._opts.kiwiGuardEnabled && !this._active && Activated) {
+      } else if (this._opts.kiwiGuardEnabled && extensionEnabled) {
         this.activate();
       }
     }
 
     activate() {
-      if (this._active) return;
       if (!this._opts.kiwiGuardEnabled) return;
       this._active = true;
 
-      if (this._opts.kiwiGuardBlockRedirects) {
-        this._installRedirectBlock();
-      }
-      if (this._opts.kiwiGuardOverlayNeutralize || this._opts.kiwiGuardOverlayZIndex) {
+      // Force refresh DOM state so main world blocker picks up latest options
+      updateKiwiGuardDOMState();
+
+      if ((this._opts.kiwiGuardOverlayNeutralize || this._opts.kiwiGuardOverlayZIndex) && !this._observer) {
         this._installOverlayGuard();
       }
     }
 
     deactivate() {
-      if (!this._active) return;
       this._active = false;
-
-      // Restore originals
-      const o = this._originals;
-      try {
-        if (o.open) window.open = o.open;
-        if (o.pushState) history.pushState = o.pushState;
-        if (o.replaceState) history.replaceState = o.replaceState;
-        if (o.exitFullscreen) document.exitFullscreen = o.exitFullscreen;
-        if (o.locationDescriptor) {
-          try { Object.defineProperty(window, 'location', o.locationDescriptor); } catch (e) {}
-        }
-      } catch (e) { /* ignore */ }
+      updateKiwiGuardDOMState();
 
       if (this._observer) {
         this._observer.disconnect();
         this._observer = null;
       }
-
-      if (this._beforeunloadInterval) {
-        clearInterval(this._beforeunloadInterval);
-        this._beforeunloadInterval = null;
-      }
-
-      this._originals = {};
-    }
-
-    _installRedirectBlock() {
-      const o = this._originals;
-
-      // Override window.open (popups)
-      o.open = window.open;
-      window.open = (...args) => {
-        console.log('[KiwiGuard] Blocked window.open(', args[0], ')');
-        return null;
-      };
-
-      // Override history.pushState / replaceState (SPA navigation)
-      o.pushState = history.pushState.bind(history);
-      history.pushState = (...args) => {
-        // Allow but log — full block causes issues on SPAs like YouTube
-        // Instead we just suppress and don't navigate
-        console.log('[KiwiGuard] Suppressed history.pushState');
-      };
-
-      o.replaceState = history.replaceState.bind(history);
-      history.replaceState = (...args) => {
-        console.log('[KiwiGuard] Suppressed history.replaceState');
-      };
-
-      // Override document.exitFullscreen to prevent page scripts from exiting
-      o.exitFullscreen = document.exitFullscreen ? document.exitFullscreen.bind(document) : null;
-      document.exitFullscreen = () => {
-        console.log('[KiwiGuard] Blocked document.exitFullscreen()');
-        return Promise.resolve();
-      };
-
-      // Override window.location.href assignment via property descriptor
-      try {
-        o.locationDescriptor = Object.getOwnPropertyDescriptor(window, 'location') ||
-          Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window), 'location');
-        const guardedHref = window.location.href;
-        Object.defineProperty(window, 'location', {
-          get: () => ({
-            href: guardedHref,
-            assign: () => console.log('[KiwiGuard] Blocked location.assign()'),
-            replace: () => console.log('[KiwiGuard] Blocked location.replace()'),
-            reload: () => console.log('[KiwiGuard] Blocked location.reload()'),
-            toString: () => guardedHref,
-          }),
-          configurable: true,
-        });
-      } catch (e) {
-        console.log('[KiwiGuard] Could not override window.location:', e.message);
-      }
-
-      // Periodically clear beforeunload
-      window.onbeforeunload = null;
-      this._beforeunloadInterval = setInterval(() => {
-        window.onbeforeunload = null;
-      }, 2000);
     }
 
     _installOverlayGuard() {
@@ -1618,22 +1705,20 @@
     }
   });
 
-  // Activate/deactivate guard based on player active state
-  // The guard auto-activates when any frame announces Activated=true
-  const _origSendToOtherContents = sendToOtherContents;
-  // Hook into the existing Activated flag changes
-  // We watch sendToOtherContents calls with type 'active-state'
-  // by monitoring Activated variable changes via the existing flow.
-  // The simplest approach: poll Activated state and drive guard accordingly.
+  // Activate/deactivate guard based on extension status + player active state
+  let _lastActivatedState = false;
   let _guardActivationInterval = setInterval(() => {
-    if (Activated && !kiwiGuard._active && kiwiGuard._opts.kiwiGuardEnabled) {
+    if (Activated !== _lastActivatedState) {
+      _lastActivatedState = Activated;
+      updateKiwiGuardDOMState();
+    }
+
+    if (extensionEnabled && !kiwiGuard._active && kiwiGuard._opts.kiwiGuardEnabled) {
       loadKiwiGuardOptions();
-      // Guard will activate after options are loaded via updateOptions()
-      // But also trigger directly if already loaded:
       if (kiwiGuard._opts.kiwiGuardEnabled) {
         kiwiGuard.activate();
       }
-    } else if (!Activated && kiwiGuard._active) {
+    } else if (!extensionEnabled && kiwiGuard._active) {
       kiwiGuard.deactivate();
     }
   }, 1000);

@@ -44,6 +44,17 @@ BackgroundUtils.queryTabs().then((ctabs) => {
   });
 });
 
+function broadcastTabStatus(tab) {
+  for (const frame of tab.getFrames()) {
+    chrome.tabs.sendMessage(tab.tabId, {
+      type: 'TAB_STATUS_CHANGED',
+      isOn: tab.isOn,
+    }, {frameId: frame.frameId}, () => {
+      chrome.runtime.lastError; // Suppress errors for unloaded/inactive frames
+    });
+  }
+}
+
 async function onClicked(tabobj) {
   const tab = Tabs.getTabOrCreate(tabobj.id);
 
@@ -66,6 +77,7 @@ async function onClicked(tabobj) {
       tab.isOn = !tab.isOn;
 
       BackgroundUtils.updateTabIcon(tab);
+      broadcastTabStatus(tab);
 
       if (tab.isOn) {
         openPlayersWithSources(tab);
@@ -86,6 +98,7 @@ async function onClicked(tabobj) {
     } else {
       tab.isOn = !tab.isOn;
       BackgroundUtils.updateTabIcon(tab);
+      broadcastTabStatus(tab);
     }
   } else {
     chrome.tabs.update(tab.tabId, {
@@ -126,7 +139,10 @@ chrome.tabs.onUpdated.addListener((tabid, changeInfo, tabobj) => {
     const match = AutoEnableList.find((item) => {
       try {
         if (!item.regex) {
-          return changeInfo.url.substring(0, item.match.length) === item.match;
+          const stripProto = (s) => (s || '').replace(/^(https?:)?\/\//, '');
+          const strippedUrl = stripProto(changeInfo.url);
+          const strippedMatch = stripProto(item.match);
+          return strippedUrl.startsWith(strippedMatch);
         } else if (item.exclude_domain) {
           return item.domain === url.hostname;
         } else {
@@ -144,13 +160,16 @@ chrome.tabs.onUpdated.addListener((tabid, changeInfo, tabobj) => {
     if (BackgroundUtils.isUrlPlayerUrl(tab.url)) {
       tab.isOn = true;
       tab.regexMatched = true;
+      broadcastTabStatus(tab);
     } else if (shouldAutoEnable && !tab.regexMatched) {
       tab.regexMatched = true;
       tab.isOn = true;
+      broadcastTabStatus(tab);
       openPlayersWithSources(tab);
     } else if (!shouldAutoEnable && tab.regexMatched) {
       tab.isOn = false;
       tab.regexMatched = false;
+      broadcastTabStatus(tab);
     }
   }
 
@@ -160,6 +179,10 @@ chrome.tabs.onUpdated.addListener((tabid, changeInfo, tabobj) => {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === MessageTypes.PING) {
     sendResponse(MessageTypes.PONG);
+    return;
+  } else if (msg.type === 'CHECK_TAB_STATUS') {
+    const tabObj = sender.tab ? Tabs.getTab(sender.tab.id) : null;
+    sendResponse({isOn: tabObj ? tabObj.isOn : false});
     return;
   } else if (msg.type === MessageTypes.LOAD_OPTIONS) {
     loadOptions();
