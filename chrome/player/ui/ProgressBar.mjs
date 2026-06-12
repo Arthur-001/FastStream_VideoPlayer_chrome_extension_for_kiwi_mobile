@@ -465,55 +465,7 @@ export class ProgressBar extends EventEmitter {
   }
 
   onProgressbarMouseMove(event, overrideTime = null) {
-    const { clientX } = this.getCoordinates(event);
-    const currentX = Math.min(Math.max(clientX - WebUtils.getOffsetLeft(DOMElements.progressContainer), 0), DOMElements.progressContainer.clientWidth);
-    const totalWidth = DOMElements.progressContainer.clientWidth;
-
-    const time = overrideTime !== null ? overrideTime : (this.client.duration * currentX / totalWidth);
-    const chapter = this.client.chapters.find((chapter) => chapter.startTime <= time && chapter.endTime >= time);
-    const segment = this.skipSegments.find((segment) => segment.startTime <= time && segment.endTime >= time);
-
-    let text = '';
-    let offset = 25;
-
-    if (segment) {
-      text += segment.name + '\n';
-      offset += 25;
-    }
-
-    if (chapter) {
-      text += chapter.name + '\n';
-      offset += 25;
-    }
-
-    DOMElements.seekPreviewVideo.style.bottom = offset + 'px';
-
-    text += StringUtils.formatTime(time);
-    DOMElements.seekPreviewText.innerText = text;
-
-    const maxWidth = Math.max(DOMElements.seekPreviewVideo.clientWidth, DOMElements.seekPreview.clientWidth);
-
-    let nudgeAmount = 0;
-
-    if (currentX < maxWidth / 2) {
-      nudgeAmount = maxWidth / 2 - currentX;
-    }
-
-    if (currentX > totalWidth - maxWidth / 2) {
-      nudgeAmount = (totalWidth - maxWidth / 2 - currentX);
-    }
-
-    DOMElements.seekPreview.style.left = (currentX + nudgeAmount) / totalWidth * 100 + '%';
-    DOMElements.seekPreviewTip.style.left = currentX / totalWidth * 100 + '%';
-
-    if (nudgeAmount) {
-      DOMElements.seekPreviewTip.classList.add('detached');
-    } else {
-      DOMElements.seekPreviewTip.classList.remove('detached');
-    }
-
-
-    this.client.seekPreview(time);
+    // No-op: disabled preview window entirely
   }
 
   onProgressbarMouseDown(event) {
@@ -542,6 +494,8 @@ export class ProgressBar extends EventEmitter {
 
     let preciseSavedTime = null;
     let preciseSavedPosition = null;
+    
+    // Immediate seek snap used for initial touch down and final release
     const shiftTime = (timeBarX) => {
       const totalWidth = DOMElements.progressContainer.clientWidth;
       if (totalWidth) {
@@ -554,6 +508,43 @@ export class ProgressBar extends EventEmitter {
         this.client.currentTime = newTime;
         this.client.updateTime(newTime);
         DOMElements.currentProgress.style.width = Utils.clamp(newTime / this.client.duration, 0, 1) * 100 + '%';
+      }
+    };
+
+    let lastSeekTime = 0;
+    let seekTimeout = null;
+    let finalTime = null;
+
+    // Throttled shiftTime used during active touch scrubbing/dragging
+    const throttledShiftTime = (timeBarX) => {
+      const totalWidth = DOMElements.progressContainer.clientWidth;
+      if (totalWidth) {
+        let newTime;
+        if (preciseSavedPosition !== null) {
+          newTime = preciseSavedTime + 60 * (timeBarX - preciseSavedPosition) / totalWidth;
+        } else {
+          newTime = this.client.duration * timeBarX / totalWidth;
+        }
+        
+        // Update slider UI elements instantly
+        this.client.updateTime(newTime);
+        DOMElements.currentProgress.style.width = Utils.clamp(newTime / this.client.duration, 0, 1) * 100 + '%';
+
+        // Limit the actual player seek operations to at most once per 150ms
+        finalTime = newTime;
+        const now = Date.now();
+        if (now - lastSeekTime > 150) {
+          lastSeekTime = now;
+          this.client.currentTime = newTime;
+        } else {
+          clearTimeout(seekTimeout);
+          seekTimeout = setTimeout(() => {
+            if (this.isSeeking && finalTime !== null) {
+              lastSeekTime = Date.now();
+              this.client.currentTime = finalTime;
+            }
+          }, 150 - (now - lastSeekTime));
+        }
       }
     };
 
@@ -589,7 +580,7 @@ export class ProgressBar extends EventEmitter {
         dragTime = this.client.duration * currentX / totalWidth;
       }
 
-      shiftTime(currentX);
+      throttledShiftTime(currentX);
 
       // Call global mousemove handler to update preview position and load thumbnail with the correct dragTime!
       this.onProgressbarMouseMove(event, dragTime);
@@ -605,6 +596,8 @@ export class ProgressBar extends EventEmitter {
         this.endPreciseMode();
       }
       this.isSeeking = false;
+
+      clearTimeout(seekTimeout);
 
       if (this.isTouchInteraction) {
         this.hidePreview();
@@ -658,8 +651,7 @@ export class ProgressBar extends EventEmitter {
   }
 
   showPreview() {
-    DOMElements.seekPreview.style.display = '';
-    DOMElements.seekPreviewTip.style.display = '';
+    // No-op: disabled preview window entirely
   }
 
   hidePreview() {
