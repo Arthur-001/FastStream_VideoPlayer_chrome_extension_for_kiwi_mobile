@@ -90,7 +90,7 @@ export class FSBlob {
   }
 
   getIdentifierURL(identifier) {
-    return 'https://faststream.online/blob-cache?identifier=' + encodeURIComponent(identifier);
+    return 'http://faststream.local/blob-cache?identifier=' + encodeURIComponent(identifier);
   }
 
   nextIdentifier() {

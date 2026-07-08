@@ -2,6 +2,7 @@
 
 import {RequestUtils} from './RequestUtils.mjs';
 
+const ENABLE_UPDATE_CHECK = false;
 const PACKAGE_JSON_URL = 'https://raw.githubusercontent.com/Andrews54757/FastStream/main/package.json';
 
 /**
@@ -13,6 +14,9 @@ export class UpdateChecker {
    * @return {Promise<string|null>} The latest version string or null if failed.
    */
   static async getLatestVersion() {
+    if (!ENABLE_UPDATE_CHECK) {
+      return null;
+    }
     const xhr = await RequestUtils.requestSimple(PACKAGE_JSON_URL);
     if (xhr.status !== 200) {
       return null;

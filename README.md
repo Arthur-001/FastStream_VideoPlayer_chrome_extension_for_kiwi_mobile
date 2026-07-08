@@ -142,6 +142,17 @@ You can then install the extension on Firefox Developer Edition by going to `abo
 
 **THERE IS NO BUILT-IN AUTOMATIC UPDATE SYSTEM. See above.**
 
+## Customizing the Update Checker & Source URL
+
+For privacy and security, the built-in update checker has been **disabled** by default in this fork. If you wish to host your own version of the extension on GitHub and re-enable update notifications:
+
+1. Open [UpdateChecker.mjs](file:///d:/Coding/FastStream_VideoPlayer_chrome_extension_for_kiwi_mobile/chrome/player/utils/UpdateChecker.mjs) and set `const ENABLE_UPDATE_CHECK = true;`.
+2. Update the `PACKAGE_JSON_URL` in [UpdateChecker.mjs](file:///d:/Coding/FastStream_VideoPlayer_chrome_extension_for_kiwi_mobile/chrome/player/utils/UpdateChecker.mjs) to point to your repository's raw `package.json` file. For example:
+   ```javascript
+   const PACKAGE_JSON_URL = 'https://raw.githubusercontent.com/<YOUR_GITHUB_USERNAME>/<YOUR_REPO_NAME>/<BRANCH>/package.json';
+   ```
+3. (Optional) Open [options.mjs](file:///d:/Coding/FastStream_VideoPlayer_chrome_extension_for_kiwi_mobile/chrome/player/options/options.mjs) and search for the `update` button click listener (around line 838). You can change the redirected URL from `https://github.com/Andrews54757/FastStream` to your project's GitHub repository page.
+
 ## Build Instructions
 In order to create bundles for Chrome and Firefox, you need to build FastStream by following these steps:
 
