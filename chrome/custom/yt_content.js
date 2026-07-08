@@ -9,8 +9,34 @@ const MessageTypes = {
   EXTRACT_YT_DATA: 'EXTRACT_YT_DATA',
 };
 
+function safeSendMessage(message, callback) {
+  if (chrome.runtime && chrome.runtime.id) {
+    try {
+      if (callback) {
+        chrome.runtime.sendMessage(message, (response) => {
+          if (chrome.runtime.lastError) {
+            callback(null);
+            return;
+          }
+          callback(response);
+        });
+      } else {
+        chrome.runtime.sendMessage(message);
+      }
+    } catch (e) {
+      if (callback) {
+        callback(null);
+      }
+    }
+  } else {
+    if (callback) {
+      callback(null);
+    }
+  }
+}
+
 const mainLoadedPromise = new Promise((resolve)=>{
-  chrome.runtime.sendMessage({
+  safeSendMessage({
     type: MessageTypes.WAIT_UNTIL_MAIN_LOADED,
   }, (response) => {
     if (response !== 'loaded') {
@@ -83,7 +109,7 @@ function pollPlaylistButtons(request, sender, sendResponse) {
 
 async function sendToOtherContents(message) {
   await mainLoadedPromise;
-  chrome.runtime.sendMessage({
+  safeSendMessage({
     type: MessageTypes.SEND_TO_CONTENT,
     data: message,
     destination: 'main',
@@ -424,7 +450,7 @@ const observer = new MutationObserver((mutations) => {
         if (!is_live()) {
           FoundYTPlayer.dataset['faststreamytplayer'] = 'true';
           document.querySelector('.ytp-progress-bar')?.classList.add('vjs-progress-holder');
-          chrome.runtime.sendMessage({
+          safeSendMessage({
             type: MessageTypes.YT_LOADED,
             url: window.location.href,
           });

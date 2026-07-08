@@ -31,7 +31,7 @@ try {
   console.error(e);
 }
 
-BackgroundUtils.openWelcomePageOnInstall();
+// BackgroundUtils.openWelcomePageOnInstall();
 
 BackgroundUtils.queryTabs().then((ctabs) => {
   ctabs.forEach((tabobj) => {

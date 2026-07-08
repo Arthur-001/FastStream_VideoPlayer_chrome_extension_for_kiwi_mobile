@@ -1,3 +1,29 @@
+function safeSendMessage(message, callback) {
+  if (chrome.runtime && chrome.runtime.id) {
+    try {
+      if (callback) {
+        chrome.runtime.sendMessage(message, (response) => {
+          if (chrome.runtime.lastError) {
+            callback(null);
+            return;
+          }
+          callback(response);
+        });
+      } else {
+        chrome.runtime.sendMessage(message);
+      }
+    } catch (e) {
+      if (callback) {
+        callback(null);
+      }
+    }
+  } else {
+    if (callback) {
+      callback(null);
+    }
+  }
+}
+
 class Bilibili2Dash {
   constructor() {
     this.document = document.implementation.createDocument('', '', null);
@@ -94,7 +120,7 @@ for (let i = 0; i < scriptTags.length; i++) {
       const converter = new Bilibili2Dash();
       const mpd = converter.playInfoToDash(playInfoObj);
       const url = `data:application/dash+xml;base64,${btoa(mpd)}`;
-      chrome.runtime.sendMessage({
+      safeSendMessage({
         type: 'DETECTED_SOURCE',
         url,
         ext: 'mpd',

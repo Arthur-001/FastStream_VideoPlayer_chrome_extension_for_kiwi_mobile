@@ -1,3 +1,29 @@
+function safeSendMessage(message, callback) {
+  if (chrome.runtime && chrome.runtime.id) {
+    try {
+      if (callback) {
+        chrome.runtime.sendMessage(message, (response) => {
+          if (chrome.runtime.lastError) {
+            callback(null);
+            return;
+          }
+          callback(response);
+        });
+      } else {
+        chrome.runtime.sendMessage(message);
+      }
+    } catch (e) {
+      if (callback) {
+        callback(null);
+      }
+    }
+  } else {
+    if (callback) {
+      callback(null);
+    }
+  }
+}
+
 // Listen for messages
 window.addEventListener('message', (event) => {
   if (event.origin !== window.location.origin) {
@@ -14,7 +40,7 @@ window.addEventListener('message', (event) => {
     const ext = (event.data?.ext || '').toString();
     const mpd = value;
     const url = `data:application/dash+xml;base64,${btoa(mpd)}`;
-    chrome.runtime.sendMessage({
+    safeSendMessage({
       type: 'DETECTED_SOURCE',
       url,
       ext: ext,

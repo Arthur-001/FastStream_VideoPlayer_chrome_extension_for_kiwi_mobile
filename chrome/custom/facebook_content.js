@@ -1,3 +1,29 @@
+function safeSendMessage(message, callback) {
+  if (chrome.runtime && chrome.runtime.id) {
+    try {
+      if (callback) {
+        chrome.runtime.sendMessage(message, (response) => {
+          if (chrome.runtime.lastError) {
+            callback(null);
+            return;
+          }
+          callback(response);
+        });
+      } else {
+        chrome.runtime.sendMessage(message);
+      }
+    } catch (e) {
+      if (callback) {
+        callback(null);
+      }
+    }
+  } else {
+    if (callback) {
+      callback(null);
+    }
+  }
+}
+
 function findPropertyRecursive(obj, key, list = [], stack = []) {
   if (typeof obj !== 'object' || obj === null) {
     return;
@@ -55,7 +81,7 @@ if (datas.length === 0) {
 } else {
   const mpd = datas[0].value.playlist;
   const url = `data:application/dash+xml;base64,${btoa(mpd)}`;
-  chrome.runtime.sendMessage({
+  safeSendMessage({
     type: 'DETECTED_SOURCE',
     url,
     ext: 'mpd',
