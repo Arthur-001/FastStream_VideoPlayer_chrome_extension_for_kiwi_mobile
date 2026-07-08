@@ -60,6 +60,13 @@ A dedicated **Mobile Controls** section in settings lets you customize:
 - **Interactive Validation**: Validates options inputs in real-time. Erasing values while typing is tolerated, but empty/invalid values on blur show clear red error warnings and borders. Cross-field validation warns when drag hold exceeds the tap window.
 - **Reset Defaults** — button to restore all mobile settings back to factory defaults.
 
+### 🔧 Mobile Connection & Playback Reliability Fixes
+Critical compatibility updates for the mobile Kiwi/Chromium environment:
+- **Direct Message Port Routing** — bypassed standard `chrome.tabs.sendMessage` for supplying sources to the player iframe. This completely avoids the Kiwi/Chromium process isolation bug that causes connection failures (`Could not establish connection. Receiving end does not exist.`). The player now resolves sources directly through the synchronous `sendResponse()` callback of its runtime port.
+- **Source Cache Preservation** — removed the window `beforeunload` listener in the content script which was sending `FRAME_REMOVED` when a frame redirected to the player. Keeping the frame alive preserves the background's cache of detected video sources during player transition.
+- **Lazy AudioContext Mocking** — resolved mobile autoplay policy blocks by replacing the early initialization of `AudioContext` inside the constructor with a complete mock `dummyContext`. The actual AudioContext is only created after a user gesture.
+- **Wake Lock Permission Protection** — safeguarded wake lock queries by validating `document.featurePolicy?.allowsFeature('screen-wake-lock')` before requesting, preventing DOMException console errors on sites with strict policies.
+
 ---
 
 ## Installation on Kiwi Browser

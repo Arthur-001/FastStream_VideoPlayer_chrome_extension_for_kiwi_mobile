@@ -325,12 +325,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       data: msg.data,
       destination: msg.destination,
     }, {
-      frameId: frame.frameId,
+      frameId: frame.parent ? frame.parent.frameId : (frame.pageFrame ? frame.pageFrame.frameId : 0),
     }, (response) => {
       BackgroundUtils.checkMessageError('message_from_content');
     });
   } else if (msg.type === MessageTypes.REQUEST_SOURCES) {
-    sendSources(frame);
+    sendSources(frame, sendResponse);
+    return true;
   } else if (msg.type === MessageTypes.SET_HEADERS) {
     if (msg.commands.length) {
       ruleManager.addHeaderRule(msg.url, sender.tab.id, msg.commands).then((rule) => {
@@ -1103,22 +1104,31 @@ function collectSources(frame, remove = false) {
   return {subtitles, sources};
 }
 
-function sendSources(frame) {
-  const {subtitles, sources} = collectSources(frame, true);
+function sendSources(frame, sendResponse) {
+  const {subtitles, sources} = collectSources(frame, false);
 
   const continuationOptions = frame.tab.continuationOptions;
   frame.tab.continuationOptions = null;
 
-  chrome.tabs.sendMessage(frame.tab.tabId, {
+  const data = {
     type: MessageTypes.SOURCES,
     subtitles: subtitles,
     sources: sources,
     autoSetSource: true,
     continuationOptions: continuationOptions,
-  }, {
+  };
+
+  if (sendResponse) {
+    sendResponse(data);
+  }
+
+  chrome.tabs.sendMessage(frame.tab.tabId, data, {
     frameId: frame.frameId,
   }, () => {
-    BackgroundUtils.checkMessageError('sources');
+    const err = chrome.runtime.lastError;
+    if (err && !sendResponse) {
+      BackgroundUtils.checkMessageError('sources');
+    }
   });
 }
 

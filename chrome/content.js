@@ -1467,11 +1467,6 @@
     resizeMiniPlayers();
   });
 
-  window.addEventListener('beforeunload', () => {
-    safeSendMessage({
-      type: MessageTypes.FRAME_REMOVED,
-    });
-  });
 
   document.addEventListener('DOMContentLoaded', () => {
     safeSendMessage({

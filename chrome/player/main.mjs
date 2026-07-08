@@ -291,6 +291,11 @@ async function setup() {
 
       chrome.runtime.sendMessage({
         type: MessageTypes.REQUEST_SOURCES,
+      }, (response) => {
+        const err = chrome.runtime.lastError;
+        if (response && response.type === MessageTypes.SOURCES) {
+          recieveSources(response, () => {});
+        }
       });
     });
   } else {
