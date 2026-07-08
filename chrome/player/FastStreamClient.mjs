@@ -124,7 +124,47 @@ export class FastStreamClient extends EventEmitter {
     this.frameExtractor = new PreviewFrameExtractor(this);
     if (EnvUtils.isWebAudioSupported()) {
       this.audioConfigManager = new AudioConfigManager(this);
-      this.audioContext = new AudioContext();
+      const dummyContext = {
+        state: 'suspended',
+        sampleRate: 48000,
+        resume: async () => {},
+        close: async () => {},
+        createBiquadFilter: () => ({
+          connect: () => {},
+          disconnect: () => {},
+          frequency: { value: 0 },
+          gain: { value: 0 },
+          Q: { value: 0 }
+        }),
+        createDynamicsCompressor: () => ({
+          connect: () => {},
+          disconnect: () => {},
+          threshold: { value: 0 },
+          knee: { value: 0 },
+          ratio: { value: 0 },
+          reduction: 0,
+          attack: { value: 0 },
+          release: { value: 0 }
+        }),
+        createGain: () => ({
+          connect: () => {},
+          disconnect: () => {},
+          gain: { value: 1 }
+        }),
+        createChannelSplitter: () => ({
+          connect: () => {},
+          disconnect: () => {}
+        }),
+        createChannelMerger: () => ({
+          connect: () => {},
+          disconnect: () => {}
+        }),
+        destination: {
+          channelCount: 2,
+          maxChannelCount: 2
+        }
+      };
+      this.audioContext = dummyContext;
       this.audioConfigManager.setupNodes(this.audioContext);
     }
 
@@ -308,8 +348,9 @@ export class FastStreamClient extends EventEmitter {
 
   async updateWakeLock() {
     const shouldKeepOn = this.options.kiwiKeepScreenOn !== false;
+    const isWakeLockAllowed = !document.featurePolicy || document.featurePolicy.allowsFeature('screen-wake-lock');
     
-    if (shouldKeepOn && !this.destroyed) {
+    if (shouldKeepOn && !this.destroyed && isWakeLockAllowed) {
       if (!this.wakeLock && 'wakeLock' in navigator) {
         try {
           this.wakeLock = await navigator.wakeLock.request('screen');

@@ -330,7 +330,7 @@
           newURL.searchParams.set('parent_frame_id', request.frameId);
           iframe.src = newURL.href;
           iframe.allowFullscreen = true;
-          iframe.allow = 'autoplay; fullscreen; picture-in-picture';
+          iframe.allow = 'autoplay; fullscreen; picture-in-picture; screen-wake-lock';
           pauseAllWithin(document.body);
           // Remove everything from the document
           document.body.appendChild(iframe);
@@ -343,7 +343,7 @@
         // copy styles
         const iframe = document.createElement('iframe');
         iframe.allowFullscreen = true;
-        iframe.allow = 'autoplay; fullscreen; picture-in-picture';
+        iframe.allow = 'autoplay; fullscreen; picture-in-picture; screen-wake-lock';
         iframe.style.display = 'none';
         newURL.searchParams.set('parent_frame_id', request.frameId);
         iframe.src = newURL.href;

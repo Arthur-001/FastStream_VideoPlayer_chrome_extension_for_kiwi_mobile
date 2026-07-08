@@ -227,10 +227,25 @@ export class AudioAnalyzer extends EventEmitter {
     await player.setup();
 
     const audioAnalyzerNode = new AudioAnalyzerNode();
-    const audioContext = new AudioContext({
-      sinkId: {type: 'none'},
-    });
-    const audioSource = audioContext.createMediaElementSource(player.getVideo());
+    let audioContext;
+    let audioSource;
+    try {
+      audioContext = new AudioContext({
+        sinkId: {type: 'none'},
+      });
+      audioSource = audioContext.createMediaElementSource(player.getVideo());
+    } catch (err) {
+      console.warn('Failed to setup background audio analyzer nodes:', err);
+      audioAnalyzerNode.destroy();
+      if (audioSource) {
+        try { audioSource.disconnect(); } catch (e) {}
+      }
+      if (audioContext) {
+        try { audioContext.close(); } catch (e) {}
+      }
+      onDone(false);
+      return;
+    }
     audioAnalyzerNode.attach(player.getVideo(), audioSource, audioContext);
     audioAnalyzerNode.on('vad', this.onVadFrameProcessed.bind(this));
     audioAnalyzerNode.on('volume', this.onVolumeFrameProcessed.bind(this));
