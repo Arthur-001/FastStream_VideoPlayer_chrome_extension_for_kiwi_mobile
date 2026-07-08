@@ -76,6 +76,8 @@ Critical compatibility updates for the mobile Kiwi/Chromium environment:
 3. Open Kiwi Browser and navigate to `chrome://extensions`
 4. Enable **Developer Mode**
 5. Tap **"Load unpacked"** and select the `chrome/` directory from this repository
+6. **UserScripts Permission (for YouTube playback)**:
+   - On Kiwi Browser, permissions requested by the unpacked extension (including `userScripts` required for YouTube player injection) are granted automatically on installation. No manual configuration or toggle is needed!
 
 > **Note**: There is no automatic update system. Check back here for new releases.
 
@@ -150,6 +152,9 @@ The Chrome extension store policies do not allow extensions that can download vi
 1. Go to `chrome://extensions`
 2. Turn on developer mode
 3. Drag and drop the `chrome` directory of this repository, or the prebuilt ZIP found on the [Releases page](https://github.com/Andrews54757/FastStream/releases)
+4. **Enable UserScripts Permission (required for YouTube playback)**:
+   - Click the **"Details"** button on the FastStream extension card.
+   - Scroll down to find the **"Allow User Scripts"** toggle and turn it **ON**.
 
 **THERE IS NO BUILT-IN AUTOMATIC UPDATE SYSTEM. If you go this route, please make sure to check back often for updates because I will often fix bugs as I encounter them. FastStream will remind you in the settings page, but you will have to update it manually.**
 
