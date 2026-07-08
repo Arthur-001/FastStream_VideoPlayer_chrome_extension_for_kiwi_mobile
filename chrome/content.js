@@ -28,111 +28,32 @@
   // Intercepts window.open, Location.prototype, and document.exitFullscreen
   // in the webpage's main world context to block malicious ads and redirects.
   // ===========================================================================
-  const mainWorldScript = `
-    (function() {
-      const originalOpen = window.open;
-      const originalExitFullscreen = document.exitFullscreen;
-      const locProto = Location.prototype;
-      const originalHrefDesc = Object.getOwnPropertyDescriptor(locProto, 'href');
-      const originalAssign = locProto.assign;
-      const originalReplace = locProto.replace;
-
-      function isDifferentOrigin(targetUrl) {
-        if (!targetUrl) return false;
-        try {
-          const target = new URL(targetUrl, window.location.href);
-          return target.origin !== window.location.origin;
-        } catch (e) {
-          return false;
-        }
-      }
-
-      function getOptions() {
-        if (window.__kiwiGuardOptions) {
-          return window.__kiwiGuardOptions;
-        }
-        try {
-          const attr = document.documentElement.getAttribute('data-kiwi-guard');
-          return attr ? JSON.parse(attr) : { enabled: false, blockRedirects: false };
-        } catch (e) {
-          return { enabled: false, blockRedirects: false };
-        }
-      }
-
-      window.open = function(...args) {
-        const opts = getOptions();
-        if (opts.enabled && opts.blockRedirects) {
-          const targetUrl = args[0];
-          if (!targetUrl || targetUrl === 'about:blank' || isDifferentOrigin(targetUrl)) {
-            console.log('[KiwiGuard] Blocked cross-origin/blank window.open:', targetUrl);
-            return null;
-          }
-        }
-        return originalOpen.apply(window, args);
-      };
-
-      if (originalHrefDesc && originalHrefDesc.set) {
-        Object.defineProperty(locProto, 'href', {
-          get: function() {
-            return originalHrefDesc.get.call(this);
-          },
-          set: function(val) {
-            const opts = getOptions();
-            if (opts.enabled && opts.blockRedirects && isDifferentOrigin(val)) {
-              console.log('[KiwiGuard] Blocked cross-origin Location.prototype.href setter:', val);
-              return;
-            }
-            originalHrefDesc.set.call(this, val);
-          },
-          configurable: true,
-        });
-      }
-
-      locProto.assign = function(val) {
-        const opts = getOptions();
-        if (opts.enabled && opts.blockRedirects && isDifferentOrigin(val)) {
-          console.log('[KiwiGuard] Blocked cross-origin Location.prototype.assign():', val);
-          return;
-        }
-        return originalAssign.call(this, val);
-      };
-
-      locProto.replace = function(val) {
-        const opts = getOptions();
-        if (opts.enabled && opts.blockRedirects && isDifferentOrigin(val)) {
-          console.log('[KiwiGuard] Blocked cross-origin Location.prototype.replace():', val);
-          return;
-        }
-        return originalReplace.call(this, val);
-      };
-
-      document.exitFullscreen = function(...args) {
-        const opts = getOptions();
-        if (opts.enabled && opts.playerActive) {
-          console.log('[KiwiGuard] Blocked exitFullscreen while player is active');
-          return Promise.resolve();
-        }
-        return originalExitFullscreen ? originalExitFullscreen.apply(document, args) : Promise.resolve();
-      };
-
-      setInterval(() => {
-        const opts = getOptions();
-        if (opts.enabled && opts.blockRedirects) {
-          if (window.onbeforeunload) {
-            window.onbeforeunload = null;
-          }
-        }
-      }, 1000);
-    })();
-  `;
-
   try {
     const script = document.createElement('script');
-    script.textContent = mainWorldScript;
+    script.src = chrome.runtime.getURL('custom/kiwiguard_inject.js');
     (document.head || document.documentElement).appendChild(script);
     script.remove();
   } catch (e) {
     console.error('[KiwiGuard] Failed to inject main world guard:', e);
+  }
+
+  function safeSendMessage(message, callback) {
+    if (chrome.runtime && chrome.runtime.id) {
+      try {
+        if (callback) {
+          chrome.runtime.sendMessage(message, (response) => {
+            if (chrome.runtime.lastError) {
+              return;
+            }
+            callback(response);
+          });
+        } else {
+          chrome.runtime.sendMessage(message);
+        }
+      } catch (e) {
+        // Ignored to prevent "Extension context invalidated" errors
+      }
+    }
   }
 
   const iframeMap = new Map();
@@ -155,17 +76,12 @@
     };
     try {
       document.documentElement.setAttribute('data-kiwi-guard', JSON.stringify(state));
-      const script = document.createElement('script');
-      script.textContent = `window.__kiwiGuardOptions = ${JSON.stringify(state)};`;
-      (document.head || document.documentElement).appendChild(script);
-      script.remove();
     } catch (e) {}
   }
 
   // Query initial tab status on load
   try {
-    chrome.runtime.sendMessage({type: 'CHECK_TAB_STATUS'}, (response) => {
-      if (chrome.runtime.lastError) return;
+    safeSendMessage({type: 'CHECK_TAB_STATUS'}, (response) => {
       if (response && response.isOn !== undefined) {
         extensionEnabled = response.isOn;
         updateKiwiGuardDOMState();
@@ -337,7 +253,7 @@
   }
 
   async function sendToOtherContents(message) {
-    chrome.runtime.sendMessage({
+    safeSendMessage({
       type: 'SEND_TO_CONTENT',
       data: message,
       destination: 'custom',
@@ -594,7 +510,7 @@
 
     return Promise.all(frameIds.map((id) => {
       return new Promise((resolve) => {
-        chrome.runtime.sendMessage({
+        safeSendMessage({
           type: MessageTypes.SEND_TO_PLAYER,
           frameId: id,
           data,
@@ -686,7 +602,7 @@
 
         iframeObj.replacedData = null;
 
-        chrome.runtime.sendMessage({
+        safeSendMessage({
           type: MessageTypes.FRAME_REMOVED,
           frameId: iframeObj.frameId,
         });
@@ -1552,18 +1468,18 @@
   });
 
   window.addEventListener('beforeunload', () => {
-    chrome.runtime.sendMessage({
+    safeSendMessage({
       type: MessageTypes.FRAME_REMOVED,
     });
   });
 
   document.addEventListener('DOMContentLoaded', () => {
-    chrome.runtime.sendMessage({
+    safeSendMessage({
       type: MessageTypes.FRAME_LOADED,
     });
   });
 
-  chrome.runtime.sendMessage({
+  safeSendMessage({
     type: MessageTypes.FRAME_ADDED,
     url: window.location.href,
   });

@@ -95,6 +95,7 @@
         "player/index.html",
         "player/options/index.html",
         "custom/instagram_inject.js",
+        "custom/kiwiguard_inject.js",
         "temp/*"
       ],
       "matches": [
