@@ -397,6 +397,36 @@
                     <small style="margin-left: 4px; opacity: 0.6;">How long the controls remain visible while playing before auto-hiding (in milliseconds). Default: 2000ms</small>
                 </div>
 
+                <h2 style="margin-top: 16px; margin-bottom: 4px; font-size: 1em; opacity: 0.8;">Flow Drag Seek</h2>
+                <p style="margin: 0 0 4px; font-size: 0.85em; opacity: 0.65;">Press &amp; hold then drag left/right to scrub the video in fullscreen. The drag activates only after the hold time has elapsed — keep it below the Tap Window to avoid conflicts.</p>
+
+                <div class="search-target-remove">
+                    <br>
+                    <div class="option grid2">
+                        <div class="label search-target-text">Flow Drag Sensitivity (s/px)</div>
+                        <input class="number" type="number" id="dragseeksensitivity" min="0.05" max="2.0" step="0.05">
+                    </div>
+                    <small style="margin-left: 4px; opacity: 0.6;">Seconds seeked per pixel of horizontal drag. Lower = more precise scrubbing. Default: 0.3</small>
+                </div>
+
+                <div class="search-target-remove">
+                    <br>
+                    <div class="option grid2">
+                        <div class="label search-target-text">Flow Drag Activation Hold (ms)</div>
+                        <input class="number" type="number" id="dragactivationholdms" min="50" max="500" step="10">
+                    </div>
+                    <small style="margin-left: 4px; opacity: 0.6;">How long a finger must be held before a touch counts as a drag (not a tap). Must be less than or equal to Tap Window. Default: 150ms</small>
+                </div>
+
+                <div class="search-target-remove">
+                    <br>
+                    <div class="option grid2">
+                        <div class="label search-target-text">Drag Seek Transition (ms)</div>
+                        <input class="number" type="number" id="dragseektransitionms" min="0" max="300" step="10">
+                    </div>
+                    <small style="margin-left: 4px; opacity: 0.6;">How smooth the progress bar fill animates during drag. 0 = instant snap, 300 = very smooth. Default: 150ms</small>
+                </div>
+
                 <div class="search-target-remove">
                     <br>
                     <div class="option grid1">

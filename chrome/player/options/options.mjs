@@ -67,6 +67,10 @@ const kiwiGuardOverlayZIndex = document.getElementById('kiwiguardoverlayzindex')
 const kiwiGuardSubOptions = document.getElementById('kiwi-guard-sub-options');
 const kiwiKeepScreenOn = document.getElementById('kiwakeepscreenon');
 const resetMobileOptions = document.getElementById('resetmobileoptions');
+// Flow Drag Seek controls
+const dragSeekSensitivity = document.getElementById('dragseeksensitivity');
+const dragActivationHoldMs = document.getElementById('dragactivationholdms');
+const dragSeekTransitionMs = document.getElementById('dragseektransitionms');
 autoEnableURLSInput.setAttribute('autocapitalize', 'off');
 autoEnableURLSInput.setAttribute('autocomplete', 'off');
 autoEnableURLSInput.setAttribute('autocorrect', 'off');
@@ -139,6 +143,13 @@ async function loadOptions(newOptions) {
   kiwiGuardOverlayZIndex.checked = Options.kiwiGuardOverlayZIndex !== false;
   kiwiKeepScreenOn.checked = Options.kiwiKeepScreenOn !== false;
   updateKiwiGuardSubOptions();
+  // Flow Drag Seek
+  dragSeekSensitivity.value = Options.dragSeekSensitivity ?? 0.3;
+  clearInputError(dragSeekSensitivity);
+  dragActivationHoldMs.value = Options.dragActivationHoldMs ?? 150;
+  clearInputError(dragActivationHoldMs);
+  dragSeekTransitionMs.value = Options.dragSeekTransitionMs ?? 150;
+  clearInputError(dragSeekTransitionMs);
 
   setSelectMenuValue(daltonizerType, Options.videoDaltonizerType);
   setSelectMenuValue(clickAction, Options.singleClickAction);
@@ -536,6 +547,45 @@ function validateNumberInput(inputEl, min, max, name, unit = "") {
   };
 }
 
+function validateFloatInput(inputEl, min, max, name, unit = "") {
+  const rawValue = inputEl.value.trim();
+
+  if (rawValue === "") {
+    return { valid: false, empty: true, errorMsg: `${name} cannot be empty.` };
+  }
+
+  const parsed = parseFloat(rawValue);
+  if (isNaN(parsed)) {
+    return { valid: false, empty: false, errorMsg: `Please enter a valid number for ${name}.` };
+  }
+
+  if (parsed < min || parsed > max) {
+    return {
+      valid: false,
+      empty: false,
+      errorMsg: `${name} must be between ${min}${unit} and ${max}${unit}.`
+    };
+  }
+
+  return { valid: true, value: Math.round(parsed * 100) / 100 };
+}
+
+function handleMobileFloatEvent(inputEl, key, min, max, name, unit = "", isBlur = false) {
+  const result = validateFloatInput(inputEl, min, max, name, unit);
+
+  if (result.valid) {
+    clearInputError(inputEl);
+    Options[key] = result.value;
+    optionChanged();
+  } else {
+    if (result.empty && !isBlur) {
+      clearInputError(inputEl);
+    } else {
+      showInputError(inputEl, result.errorMsg);
+    }
+  }
+}
+
 function handleMobileInputEvent(inputEl, key, min, max, name, unit = "", isBlur = false) {
   const result = validateNumberInput(inputEl, min, max, name, unit);
   
@@ -560,9 +610,19 @@ tapZonePercent.addEventListener('input', () => handleMobileInputEvent(tapZonePer
 tapZonePercent.addEventListener('change', () => handleMobileInputEvent(tapZonePercent, 'tapZonePercent', 10, 45, 'Tap Zone Width', '%', true));
 tapZonePercent.addEventListener('blur', () => handleMobileInputEvent(tapZonePercent, 'tapZonePercent', 10, 45, 'Tap Zone Width', '%', true));
 
-tapWindowMs.addEventListener('input', () => handleMobileInputEvent(tapWindowMs, 'tapWindowMs', 200, 1000, 'Tap Window', 'ms', false));
-tapWindowMs.addEventListener('change', () => handleMobileInputEvent(tapWindowMs, 'tapWindowMs', 200, 1000, 'Tap Window', 'ms', true));
-tapWindowMs.addEventListener('blur', () => handleMobileInputEvent(tapWindowMs, 'tapWindowMs', 200, 1000, 'Tap Window', 'ms', true));
+tapWindowMs.addEventListener('input', () => {
+  handleMobileInputEvent(tapWindowMs, 'tapWindowMs', 200, 1000, 'Tap Window', 'ms', false);
+  // Re-check drag hold whenever tap window changes
+  validateDragHoldVsTapWindow(false);
+});
+tapWindowMs.addEventListener('change', () => {
+  handleMobileInputEvent(tapWindowMs, 'tapWindowMs', 200, 1000, 'Tap Window', 'ms', true);
+  validateDragHoldVsTapWindow(true);
+});
+tapWindowMs.addEventListener('blur', () => {
+  handleMobileInputEvent(tapWindowMs, 'tapWindowMs', 200, 1000, 'Tap Window', 'ms', true);
+  validateDragHoldVsTapWindow(true);
+});
 
 tapZoneLockZone.addEventListener('change', () => {
   Options.tapZoneLockZone = tapZoneLockZone.checked;
@@ -599,6 +659,36 @@ kiwiKeepScreenOn.addEventListener('change', () => {
   optionChanged();
 });
 
+// --- Flow Drag Seek cross-validation ---
+// dragActivationHoldMs must be <= tapWindowMs so the two gestures don't conflict.
+function validateDragHoldVsTapWindow(isBlur) {
+  const tapWin = parseInt(tapWindowMs.value, 10);
+  const dragHold = parseInt(dragActivationHoldMs.value, 10);
+  if (!isNaN(tapWin) && !isNaN(dragHold) && dragHold > tapWin) {
+    const msg = `Flow Drag Activation Hold (${dragHold}ms) must be ≤ Tap Window (${tapWin}ms) to avoid gesture conflicts.`;
+    showInputError(dragActivationHoldMs, msg);
+    if (isBlur) showInputError(tapWindowMs, msg);
+  } else {
+    clearInputError(dragActivationHoldMs);
+  }
+}
+
+dragSeekSensitivity.addEventListener('input', () => handleMobileFloatEvent(dragSeekSensitivity, 'dragSeekSensitivity', 0.05, 2.0, 'Flow Drag Sensitivity', 's/px', false));
+dragSeekSensitivity.addEventListener('change', () => handleMobileFloatEvent(dragSeekSensitivity, 'dragSeekSensitivity', 0.05, 2.0, 'Flow Drag Sensitivity', 's/px', true));
+dragSeekSensitivity.addEventListener('blur', () => handleMobileFloatEvent(dragSeekSensitivity, 'dragSeekSensitivity', 0.05, 2.0, 'Flow Drag Sensitivity', 's/px', true));
+
+function handleDragHoldInput(isBlur) {
+  handleMobileInputEvent(dragActivationHoldMs, 'dragActivationHoldMs', 50, 500, 'Flow Drag Activation Hold', 'ms', isBlur);
+  validateDragHoldVsTapWindow(isBlur);
+}
+dragActivationHoldMs.addEventListener('input', () => handleDragHoldInput(false));
+dragActivationHoldMs.addEventListener('change', () => handleDragHoldInput(true));
+dragActivationHoldMs.addEventListener('blur', () => handleDragHoldInput(true));
+
+dragSeekTransitionMs.addEventListener('input', () => handleMobileInputEvent(dragSeekTransitionMs, 'dragSeekTransitionMs', 0, 300, 'Drag Seek Transition', 'ms', false));
+dragSeekTransitionMs.addEventListener('change', () => handleMobileInputEvent(dragSeekTransitionMs, 'dragSeekTransitionMs', 0, 300, 'Drag Seek Transition', 'ms', true));
+dragSeekTransitionMs.addEventListener('blur', () => handleMobileInputEvent(dragSeekTransitionMs, 'dragSeekTransitionMs', 0, 300, 'Drag Seek Transition', 'ms', true));
+
 resetMobileOptions.addEventListener('click', () => {
   const mobileDefaults = {
     tapSeekSeconds: 10,
@@ -611,6 +701,9 @@ resetMobileOptions.addEventListener('click', () => {
     kiwiGuardOverlayNeutralize: true,
     kiwiGuardOverlayZIndex: true,
     kiwiKeepScreenOn: true,
+    dragSeekSensitivity: 0.3,
+    dragActivationHoldMs: 150,
+    dragSeekTransitionMs: 150,
   };
   Object.assign(Options, mobileDefaults);
   loadOptions(Options);

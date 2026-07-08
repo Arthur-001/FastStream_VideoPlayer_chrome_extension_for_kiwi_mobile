@@ -92,4 +92,5 @@ export const DOMElements = {
   // Kiwi Mobile: Seek overlays
   kiwiSeekLeft: document.querySelector('.mainplayer .kiwi-seek-left'),
   kiwiSeekRight: document.querySelector('.mainplayer .kiwi-seek-right'),
+  kiwiDragSeek: document.querySelector('.mainplayer .kiwi-drag-seek'),
 };

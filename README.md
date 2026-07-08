@@ -20,6 +20,15 @@ When the video player is in fullscreen:
 Outside of fullscreen:
 - **Double-click anywhere** on the player → enters fullscreen mode (works when playing *or* paused)
 
+### 🎯 Video Flow Drag (Scrub Gesture) — Fullscreen Only
+A natural, analog seek gesture for precise scrubbing in fullscreen — just like VLC, Infuse, or Plex on mobile:
+- **Press & hold then drag left** → scrub backward smoothly
+- **Press & hold then drag right** → scrub forward smoothly
+- A **centered overlay** appears showing the current time, a color-coded delta (🟢 forward / 🔴 backward), and a thin progress bar
+- The video **pauses during the drag** and **resumes automatically** when you lift your finger
+- Drag and double-tap are **mutually exclusive** — a quick touch is always a tap, a held-then-dragged touch is always a flow drag
+- All parameters are configurable in Settings → Mobile Controls → **Flow Drag Seek**
+
 ### 🔊 Volume Icon Tap-to-Expand & Dragging
 - **Tap the volume icon** → first expands the collapsed volume progress slider on mobile. Once visible, subsequent taps toggle mute/unmute. On desktop, hover still expands the bar automatically and clicks toggle mute instantly.
 - **Hold & Drag Volume Bar** → slide your finger left/right on the volume progress bar to adjust volume in real-time. Viewport scroll is locked during dragging to prevent mobile swiping bugs.
@@ -43,10 +52,12 @@ A dedicated **Mobile Controls** section in settings lets you customize:
 - Left/right tap zone width (default: 40% each)
 - Tap accumulation window (default: 500ms)
 - Controls auto-hide timeout (default: 2000ms)
+- **Flow drag sensitivity** — seconds seeked per pixel of drag (default: 0.3 s/px)
+- **Flow drag activation hold** — how long to hold before a touch becomes a drag vs. a tap (default: 150ms; auto-validated against tap window to prevent conflicts)
 - Fullscreen guard settings (master toggle + 3 sub-feature toggles)
 - Keep screen active (toggle)
 - **Real-Time Saves**: Settings changes are saved and propagate to the active player iframe in real-time.
-- **Interactive Validation**: Validates options inputs in real-time. Erasing values while typing is tolerated, but empty/invalid values on blur show clear red error warnings and borders.
+- **Interactive Validation**: Validates options inputs in real-time. Erasing values while typing is tolerated, but empty/invalid values on blur show clear red error warnings and borders. Cross-field validation warns when drag hold exceeds the tap window.
 - **Reset Defaults** — button to restore all mobile settings back to factory defaults.
 
 ---

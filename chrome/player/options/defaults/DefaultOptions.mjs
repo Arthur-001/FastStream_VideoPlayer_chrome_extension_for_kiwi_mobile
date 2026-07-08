@@ -56,6 +56,11 @@ export const DefaultOptions = {
   tapZoneLockZone: true,    // When true, zone switches mid-session are ignored (finish original direction)
   kiwiControlsHideTimeout: 2000, // Timeout to auto-hide controls in milliseconds
 
+  // Flow Drag Seek settings (horizontal drag-to-scrub in fullscreen)
+  dragSeekSensitivity: 0.3, // Seconds seeked per pixel of horizontal drag (lower = more precise)
+  dragActivationHoldMs: 150, // Ms a touch must be held before it can be recognized as a drag (must be <= tapWindowMs)
+  dragSeekTransitionMs: 150, // CSS transition duration on the progress bar fill during drag (ms)
+
   // Fullscreen Guard settings
   kiwiGuardEnabled: true,          // Master toggle for all guard features
   kiwiGuardBlockRedirects: true,   // Block JS/HTML auto-redirects while player is active

@@ -794,6 +794,116 @@ export class InterfaceController {
       }
     };
 
+    // -----------------------------------------------------------------------
+    // Drag seek state
+    // -----------------------------------------------------------------------
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartTime = 0;      // client.currentTime snapshot when drag began
+    let dragWasPlaying = false; // whether video was playing when drag started
+    let dragHoldTimer = null;   // fires after dragActivationHoldMs, enabling drag mode
+    let dragHoldReady = false;  // true once hold timer has fired
+    let dragTouchId = null;     // track single touch identifier
+
+    // Format seconds into M:SS or H:MM:SS
+    const formatDragTime = (secs) => StringUtils.formatTime(Math.max(0, secs));
+    // Update the centered drag overlay with current position + delta
+    const updateDragOverlay = (currentSecs, deltaSecs) => {
+      const overlay = DOMElements.kiwiDragSeek;
+      if (!overlay) return;
+
+      const timeEl = overlay.querySelector('.kiwi-drag-seek-time');
+      const deltaEl = overlay.querySelector('.kiwi-drag-seek-delta');
+      const dirEl = overlay.querySelector('.kiwi-drag-seek-direction');
+
+      if (timeEl) timeEl.textContent = formatDragTime(currentSecs);
+
+      if (deltaEl) {
+        const sign = deltaSecs >= 0 ? '+' : '\u2212';
+        deltaEl.textContent = `${sign}${Math.abs(Math.round(deltaSecs))}s`;
+        deltaEl.className = 'kiwi-drag-seek-delta ' +
+          (deltaSecs > 0.5 ? 'forward' : deltaSecs < -0.5 ? 'backward' : 'neutral');
+      }
+
+      // Update direction arrow to show which way we're going
+      if (dirEl) {
+        if (deltaSecs > 0.5) {
+          dirEl.textContent = '\u25BA\u25BA'; // >>
+        } else if (deltaSecs < -0.5) {
+          dirEl.textContent = '\u25C4\u25C4'; // <<
+        } else {
+          dirEl.textContent = '\u25C4\u25C4\u25BA\u25BA';
+        }
+      }
+
+      // Update real progress bar fill width with smooth transition
+      const duration = this.client.duration || 1;
+      const pct = Math.min(100, Math.max(0, (currentSecs / duration) * 100));
+      DOMElements.currentProgress.style.width = `${pct}%`;
+
+      // Also update the duration text so the time counter reflects scrub position
+      DOMElements.duration.textContent =
+        `${formatDragTime(currentSecs)} / ${formatDragTime(duration)}`;
+    };
+
+    const showDragOverlay = () => {
+      const opts = this.client.options;
+      const transMs = opts.dragSeekTransitionMs ?? 150;
+
+      // Set CSS variable so the transition duration is configurable
+      DOMElements.progressContainer.style.setProperty('--kiwi-drag-transition', `${transMs}ms`);
+
+      // Swell the progress bar
+      DOMElements.progressContainer.classList.add('kiwi-drag-scrubbing');
+
+      // Pin the controls bar open for the entire drag — clear any pending hide timer
+      clearTimeout(this.hideControlBarTimeout);
+      this.showControlBar();
+
+      if (DOMElements.kiwiDragSeek) {
+        DOMElements.kiwiDragSeek.classList.add('kiwi-drag-active');
+      }
+    };
+
+    const hideDragOverlay = () => {
+      // Remove scrubbing swell
+      DOMElements.progressContainer.classList.remove('kiwi-drag-scrubbing');
+      DOMElements.progressContainer.style.removeProperty('--kiwi-drag-transition');
+
+      if (DOMElements.kiwiDragSeek) {
+        DOMElements.kiwiDragSeek.classList.remove('kiwi-drag-active');
+      }
+    };
+
+    // Cancel any active drag session without committing
+    const cancelDrag = () => {
+      clearTimeout(dragHoldTimer);
+      dragHoldTimer = null;
+      dragHoldReady = false;
+      isDragging = false;
+      dragTouchId = null;
+      hideDragOverlay();
+    };
+
+    // Commit drag: seek is already applied live; just resume and clean up
+    const commitDrag = () => {
+      this.client.setSeekSave(true);
+      if (dragWasPlaying) {
+        this.client.play();
+      }
+      const opts = this.client.options;
+      // Hide controls after the configured timeout (not immediately)
+      this.showControlBarTemporarily(opts.kiwiControlsHideTimeout ?? 2000);
+      hideDragOverlay();
+      isDragging = false;
+      dragHoldReady = false;
+      dragTouchId = null;
+      dragHoldTimer = null;
+    };
+
+    // -----------------------------------------------------------------------
+    // touchstart — record gesture origin, arm hold timer
+    // -----------------------------------------------------------------------
     DOMElements.videoContainer.addEventListener('touchstart', (e) => {
       const isFullscreen = this.state.fullscreen || !!document.fullscreenElement;
 
@@ -809,9 +919,26 @@ export class InterfaceController {
       const touch = e.changedTouches[0];
       if (!touch) return;
 
+      // If a drag is already in progress (multi-touch), ignore extra fingers
+      if (dragTouchId !== null && touch.identifier !== dragTouchId) return;
+
+      // Record drag origin for every touch (tap logic also benefits)
+      dragStartX = touch.clientX;
+      dragTouchId = touch.identifier;
+      dragHoldReady = false;
+
+      // Arm hold timer — drag mode becomes eligible after dragActivationHoldMs
+      clearTimeout(dragHoldTimer);
+      const opts = this.client.options;
+      const holdMs = opts.dragActivationHoldMs ?? 150;
+      dragHoldTimer = setTimeout(() => {
+        dragHoldReady = true;
+        dragHoldTimer = null;
+      }, holdMs);
+
+      // ---- existing tap zone logic (unchanged) ----
       const rect = DOMElements.videoContainer.getBoundingClientRect();
       const relX = (touch.clientX - rect.left) / rect.width; // 0..1
-      const opts = this.client.options;
       const zoneW = (opts.tapZonePercent ?? 40) / 100; // e.g. 0.40
 
       let zone;
@@ -865,6 +992,121 @@ export class InterfaceController {
       clearTimeout(touchTapTimeout);
       touchTapTimeout = setTimeout(fireTapSession, opts.tapWindowMs ?? 500);
 
+    }, {passive: false});
+
+    // -----------------------------------------------------------------------
+    // touchmove — activate and update drag if threshold is met
+    // -----------------------------------------------------------------------
+    DOMElements.videoContainer.addEventListener('touchmove', (e) => {
+      const isFullscreen = this.state.fullscreen || !!document.fullscreenElement;
+      if (!isFullscreen) return;
+
+      // Find our tracked touch
+      let touch = null;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === dragTouchId) {
+          touch = e.changedTouches[i];
+          break;
+        }
+      }
+      if (!touch) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const deltaX = touch.clientX - dragStartX;
+      const MIN_DRAG_PX = 10;
+
+      if (!isDragging) {
+        // Activate drag only if hold timer has fired AND moved far enough
+        if (!dragHoldReady || Math.abs(deltaX) < MIN_DRAG_PX) return;
+
+        // --- Enter drag mode ---
+        isDragging = true;
+
+        // Cancel any pending tap session — drag and tap are mutually exclusive
+        clearTimeout(touchTapTimeout);
+        touchTapTimeout = null;
+        touchTapCount = 0;
+        touchTapZone = null;
+        hideAllOverlays();
+
+        // Snapshot current time and pause
+        dragStartTime = this.client.currentTime;
+        dragWasPlaying = this.state.playing;
+        if (dragWasPlaying) {
+          this.client.pause();
+        }
+        this.client.setSeekSave(false);
+
+        showDragOverlay();
+      }
+
+      // --- Update live scrub position ---
+      const opts = this.client.options;
+      const sensitivity = opts.dragSeekSensitivity ?? 0.3; // s/px
+      const seekDelta = deltaX * sensitivity;
+      const duration = this.client.duration || 0;
+      const targetTime = Math.min(duration, Math.max(0, dragStartTime + seekDelta));
+
+      // Live seek (no save yet — committed on touchend)
+      this.client.currentTime = targetTime;
+
+      updateDragOverlay(targetTime, seekDelta);
+
+    }, {passive: false});
+
+    // -----------------------------------------------------------------------
+    // touchend / touchcancel — commit or cancel the drag
+    // -----------------------------------------------------------------------
+    const onTouchEnd = (e) => {
+      const isFullscreen = this.state.fullscreen || !!document.fullscreenElement;
+      if (!isFullscreen) return;
+
+      // Clear hold timer regardless
+      clearTimeout(dragHoldTimer);
+      dragHoldTimer = null;
+      dragHoldReady = false;
+
+      // Find our tracked touch
+      let touch = null;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === dragTouchId) {
+          touch = e.changedTouches[i];
+          break;
+        }
+      }
+      if (!touch) return;
+
+      if (isDragging) {
+        e.preventDefault();
+        e.stopPropagation();
+        commitDrag();
+      } else {
+        // Not a drag — tap session continues normally (already handled by timeout)
+        dragTouchId = null;
+      }
+    };
+
+    DOMElements.videoContainer.addEventListener('touchend', onTouchEnd, {passive: false});
+    DOMElements.videoContainer.addEventListener('touchcancel', (e) => {
+      if (isDragging) {
+        // On cancel, restore original time and resume
+        this.client.currentTime = dragStartTime;
+        if (dragWasPlaying) this.client.play();
+        this.client.setSeekSave(true);
+        cancelDrag();
+      } else {
+        clearTimeout(dragHoldTimer);
+        dragHoldTimer = null;
+        dragHoldReady = false;
+        dragTouchId = null;
+        // Also cancel pending tap session on unexpected cancel
+        clearTimeout(touchTapTimeout);
+        touchTapTimeout = null;
+        touchTapCount = 0;
+        touchTapZone = null;
+      }
     }, {passive: false});
   }
 

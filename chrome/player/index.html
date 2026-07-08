@@ -78,6 +78,85 @@
             letter-spacing: 0.5px;
         }
 
+        /* === Kiwi Mobile: Flow Drag Seek Overlay === */
+        .kiwi-drag-seek {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 18px 36px 16px;
+            background: rgba(0, 0, 0, 0.78);
+            border-radius: 20px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.18s ease;
+            z-index: 200;
+            min-width: 180px;
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            box-shadow: 0 4px 32px rgba(0,0,0,0.5);
+        }
+        .kiwi-drag-seek.kiwi-drag-active {
+            opacity: 1;
+        }
+        /* Arrow direction indicator line */
+        .kiwi-drag-seek-direction {
+            font-size: 18px;
+            color: rgba(255,255,255,0.55);
+            line-height: 1;
+            letter-spacing: 4px;
+            margin-bottom: 2px;
+        }
+        /* Large current position time */
+        .kiwi-drag-seek-time {
+            font-size: 28px;
+            font-weight: 800;
+            color: #fff;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.7);
+            letter-spacing: 0.5px;
+            line-height: 1;
+        }
+        /* Delta: how much time shifted */
+        .kiwi-drag-seek-delta {
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            line-height: 1;
+            padding: 3px 10px;
+            border-radius: 999px;
+            transition: color 0.1s ease, background 0.1s ease;
+        }
+        .kiwi-drag-seek-delta.forward  { color: #4ade80; background: rgba(74,222,128,0.15); }
+        .kiwi-drag-seek-delta.backward { color: #f87171; background: rgba(248,113,113,0.15); }
+        .kiwi-drag-seek-delta.neutral  { color: rgba(255,255,255,0.6); background: transparent; }
+
+        /* === Kiwi Mobile: Progress Bar Drag-Scrubbing State === */
+        /* When kiwi-drag-scrubbing is on the progress container, swell bar to 5px */
+        .fluid_video_wrapper.fluid_player_layout_default .fluid_controls_container
+            .fluid_controls_progress_container.kiwi-drag-scrubbing .fluid_controls_progress,
+        .fluid_video_wrapper.fluid_player_layout_default .fluid_controls_container
+            .fluid_controls_progress_container.kiwi-drag-scrubbing .fluid_controls_buffered {
+            margin-top: -1px;
+            height: 5px;
+            transition: height 0.15s ease, margin-top 0.15s ease;
+        }
+        .fluid_video_wrapper.fluid_player_layout_default .fluid_controls_container
+            .fluid_controls_progress_container.kiwi-drag-scrubbing .fluid_controls_progress
+            .fluid_controls_currentprogress {
+            height: 5px;
+            transition: height 0.15s ease, width var(--kiwi-drag-transition, 150ms) ease-out;
+        }
+        /* Normal state also gets width transition during drag (driven by JS CSS var) */
+        .fluid_controls_progress_container.kiwi-drag-scrubbing .fluid_controls_currentprogress {
+            transition: width var(--kiwi-drag-transition, 150ms) ease-out !important;
+        }
+
+
         /* === Kiwi Mobile: Play/Pause Circle Animation === */
         .fluid_control_playpause_big_circle {
             transition: transform 0.3s ease, opacity 0.3s ease, background-color 0.2s ease;
@@ -131,6 +210,12 @@
                 <div class="kiwi-seek-ripple kiwi-seek-ripple-2"></div>
                 <div class="kiwi-seek-arrows">&#x25BA;&#x25BA;</div>
                 <span class="kiwi-seek-text"></span>
+            </div>
+            <!-- Kiwi Mobile: Flow Drag Seek Overlay -->
+            <div class="kiwi-drag-seek" aria-hidden="true" aria-live="off">
+                <div class="kiwi-drag-seek-direction">&#x25C4;&#x25C4;&#x25BA;&#x25BA;</div>
+                <div class="kiwi-drag-seek-time">0:00</div>
+                <div class="kiwi-drag-seek-delta neutral">+0s</div>
             </div>
         </div>
         <div class="fluid_subtitles_container"></div>
