@@ -1,3 +1,23 @@
+// Fallback sandbox runner injection for browsers that do not support chrome.userScripts (e.g. Kiwi Browser)
+if (window.location.pathname === '/robots.txt') {
+  const script = document.createElement('script');
+  script.textContent = `
+    window.addEventListener('message', async (event) => {
+      if (event.data.type === 'sandboxEvaluate') {
+        try {
+          const fn = new Function(...event.data.argNames, event.data.body);
+          const result = await fn(...event.data.argValues);
+          event.source.postMessage({type: 'sandboxResult', result}, event.origin);
+        } catch (error) {
+          event.source.postMessage({type: 'sandboxError', error: error.message || error}, event.origin);
+        }
+      }
+    });
+  `;
+  (document.head || document.documentElement).appendChild(script);
+  script.remove();
+}
+
 const MessageTypes = {
   WAIT_UNTIL_MAIN_LOADED: 'WAIT_UNTIL_MAIN_LOADED',
   MESSAGE_FROM_CONTENT: 'MESSAGE_FROM_CONTENT',

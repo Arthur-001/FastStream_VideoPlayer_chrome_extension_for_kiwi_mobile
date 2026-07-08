@@ -133,8 +133,12 @@ chrome.tabs.onUpdated.addListener((tabid, changeInfo, tabobj) => {
     }, {
       frameId: 0,
     }, () => {
-      BackgroundUtils.checkMessageError('remove_players');
+      const err = chrome.runtime.lastError;
     });
+
+    const frame0 = tab.getFrameOrCreate(0);
+    frame0.url = changeInfo.url;
+    checkYTURL(frame0);
 
     const match = AutoEnableList.find((item) => {
       try {
@@ -405,25 +409,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   } else if (msg.type === MessageTypes.ENSURE_YT_USERSCRIPT) {
-    if (!BackgroundUtils.isUserScriptsAvailable()) {
-      sendResponse({
-        success: false,
-        reason: 'userscripts_not_available',
-      });
-      return;
-    }
-
-    registerYTUserScript().then(() => {
-      sendResponse({
-        success: true,
-      });
-    }).catch((e) => {
-      sendResponse({
-        success: false,
-        reason: e.message,
-      });
+    sendResponse({
+      success: true,
     });
-    return true;
+    return;
   } else if (msg.type === MessageTypes.REQUEST_FULLSCREEN) {
     return handleFullscreenRequest(frame, msg, sendResponse);
   } else if (msg.type === MessageTypes.REQUEST_WINDOWED_FULLSCREEN) {
@@ -688,6 +677,15 @@ function checkYTURL(frame) {
 
 function checkURLMatch(frame) {
   const url = frame.url;
+
+  if (URLUtils.is_url_yt(url) && URLUtils.is_url_yt_watch(url)) {
+    onSourceRecieved({
+      url: url,
+      requestId: -1,
+    }, frame, PlayerModes.ACCELERATED_YT);
+    return;
+  }
+
   const ext = CustomSourcePatternsMatcher.match(url);
   if (ext) {
     const mode = URLUtils.getModeFromExtension(ext);
