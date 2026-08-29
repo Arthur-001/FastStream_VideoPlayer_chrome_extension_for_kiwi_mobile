@@ -189,6 +189,336 @@
             width: 11px;
             height: 11px;
         }
+
+        /* === Kiwi Mobile: Touch Download Modal === */
+        .kiwi-dl-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.72);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            z-index: 100000;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.22s ease-out;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .kiwi-dl-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .kiwi-dl-sheet {
+            background: #18191c;
+            color: #f3f4f6;
+            width: 100%;
+            max-width: 480px;
+            border-radius: 20px 20px 0 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-bottom: none;
+            box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            max-height: 88vh;
+            transform: translateY(100%);
+            transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            overflow: hidden;
+        }
+        @media (min-width: 601px) {
+            .kiwi-dl-overlay {
+                align-items: center;
+            }
+            .kiwi-dl-sheet {
+                border-radius: 18px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                transform: scale(0.94);
+                transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .kiwi-dl-overlay.active .kiwi-dl-sheet {
+                transform: scale(1);
+            }
+        }
+        .kiwi-dl-overlay.active .kiwi-dl-sheet {
+            transform: translateY(0);
+        }
+        @media (min-width: 601px) {
+            .kiwi-dl-overlay.active .kiwi-dl-sheet {
+                transform: scale(1);
+            }
+        }
+        .kiwi-dl-handle-bar {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            padding-top: 10px;
+            padding-bottom: 4px;
+        }
+        .kiwi-dl-handle {
+            width: 40px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.25);
+            border-radius: 2px;
+        }
+        .kiwi-dl-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 18px 14px 18px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .kiwi-dl-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #fff;
+        }
+        .kiwi-dl-title-icon {
+            width: 22px;
+            height: 22px;
+            color: #3b82f6;
+        }
+        .kiwi-dl-close-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: none;
+            color: #9ca3af;
+            font-size: 1.5rem;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            line-height: 1;
+            transition: all 0.15s ease;
+        }
+        .kiwi-dl-close-btn:active {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+            transform: scale(0.92);
+        }
+        .kiwi-dl-body {
+            padding: 16px 18px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .kiwi-dl-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .kiwi-dl-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .kiwi-dl-input-wrap {
+            display: flex;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1.5px solid rgba(255, 255, 255, 0.12);
+            border-radius: 12px;
+            padding: 4px 12px;
+            transition: border-color 0.2s ease;
+        }
+        .kiwi-dl-input-wrap:focus-within {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+        }
+        .kiwi-dl-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-size: 0.95rem;
+            padding: 10px 0;
+            outline: none;
+            min-height: 24px;
+        }
+        .kiwi-dl-ext-badge {
+            background: rgba(59, 130, 246, 0.18);
+            color: #60a5fa;
+            font-size: 0.8rem;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 6px;
+            user-select: none;
+        }
+        .kiwi-dl-format-tabs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            padding: 4px;
+            gap: 6px;
+        }
+        .kiwi-dl-tab {
+            background: transparent;
+            border: none;
+            color: #9ca3af;
+            font-size: 0.9rem;
+            font-weight: 600;
+            padding: 12px 10px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            min-height: 48px;
+            transition: all 0.2s ease;
+        }
+        .kiwi-dl-tab svg {
+            width: 18px;
+            height: 18px;
+        }
+        .kiwi-dl-tab.active {
+            background: #2563eb;
+            color: #fff;
+            box-shadow: 0 2px 10px rgba(37, 99, 235, 0.4);
+        }
+        .kiwi-dl-tab:active {
+            transform: scale(0.97);
+        }
+        .kiwi-dl-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .kiwi-dl-section.hidden {
+            display: none;
+        }
+        .kiwi-dl-options-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .kiwi-dl-chip {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1.5px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: #e5e7eb;
+            cursor: pointer;
+            min-height: 52px;
+            text-align: left;
+            transition: all 0.15s ease;
+        }
+        .kiwi-dl-chip:active {
+            transform: scale(0.98);
+        }
+        .kiwi-dl-chip.selected {
+            background: rgba(59, 130, 246, 0.15);
+            border-color: #3b82f6;
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+        }
+        .kiwi-dl-chip-main {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .kiwi-dl-chip-label {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+        .kiwi-dl-chip.selected .kiwi-dl-chip-label {
+            color: #fff;
+        }
+        .kiwi-dl-chip-sub {
+            font-size: 0.8rem;
+            color: #9ca3af;
+            font-weight: 500;
+        }
+        .kiwi-dl-badge {
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+        .badge-direct {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        .badge-transcode {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+        .badge-mp3 {
+            background: rgba(168, 85, 247, 0.2);
+            color: #c084fc;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }
+        .kiwi-dl-footer {
+            padding: 12px 18px 20px 18px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .kiwi-dl-btn-cancel {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.08);
+            border: none;
+            color: #d1d5db;
+            font-size: 0.95rem;
+            font-weight: 600;
+            padding: 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            min-height: 48px;
+            transition: all 0.15s ease;
+        }
+        .kiwi-dl-btn-cancel:active {
+            background: rgba(255, 255, 255, 0.15);
+            transform: scale(0.97);
+        }
+        .kiwi-dl-btn-start {
+            flex: 2;
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            border: none;
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 700;
+            padding: 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            min-height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+            transition: all 0.15s ease;
+        }
+        .kiwi-dl-btn-start svg {
+            width: 20px;
+            height: 20px;
+        }
+        .kiwi-dl-btn-start:active {
+            transform: scale(0.97);
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2);
+        }
     </style>
 </head>
 

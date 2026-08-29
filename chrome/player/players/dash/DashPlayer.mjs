@@ -387,8 +387,9 @@ export default class DashPlayer extends EventEmitter {
     };
   }
 
-  async saveVideo(options) {
-    const videoFragments = this.client.getFragments(this.getCurrentVideoLevelID()) || [];
+  async saveVideo(options = {}) {
+    const videoLevelID = options.videoLevelID || this.getCurrentVideoLevelID();
+    const videoFragments = this.client.getFragments(videoLevelID) || [];
     const audioFragments = this.client.getFragments(this.getCurrentAudioLevelID()) || [];
 
     let zippedFragments = Utils.zipTimedFragments([videoFragments, audioFragments]);
@@ -440,20 +441,45 @@ export default class DashPlayer extends EventEmitter {
     const videoInitSegmentData = videoInitSegment ? await this.client.downloadManager.getEntry(videoInitSegment.getContext()).getDataFromBlob() : null;
     const audioInitSegmentData = audioInitSegment ? await this.client.downloadManager.getEntry(audioInitSegment.getContext()).getDataFromBlob() : null;
 
-    const {DASH2MP4} = await import('../../modules/dash2mp4/dash2mp4.mjs');
-
-    const dash2mp4 = new DASH2MP4(options.registerCancel);
-
-    dash2mp4.on('progress', (progress) => {
-      if (options?.onProgress) {
-        options.onProgress(progress);
-      }
-    });
-
-    const videoMimeType = videoProcessor.getRepresentation().mimeType;
-    const audioMimeType = audioProcessor.getRepresentation().mimeType;
+    const videoMimeType = videoProcessor ? videoProcessor.getRepresentation().mimeType : 'video/mp4';
+    const audioMimeType = audioProcessor ? audioProcessor.getRepresentation().mimeType : 'audio/mp4';
 
     try {
+      if (options.transcodeOptions) {
+        const {Reencoder} = await import('../../modules/reencoder/reencoder.mjs');
+        const reencoder = new Reencoder(options.registerCancel);
+        reencoder.on('progress', (progress) => {
+          if (options?.onProgress) {
+            options.onProgress(progress);
+          }
+        });
+        const blob = await reencoder.convert(
+            videoMimeType,
+            videoDuration,
+            videoInitSegmentData,
+            audioMimeType,
+            audioDuration,
+            audioInitSegmentData,
+            zippedFragments,
+            options.transcodeOptions,
+            true,
+        );
+        return {
+          extension: 'mp4',
+          blob: blob,
+        };
+      }
+
+      const {DASH2MP4} = await import('../../modules/dash2mp4/dash2mp4.mjs');
+
+      const dash2mp4 = new DASH2MP4(options.registerCancel);
+
+      dash2mp4.on('progress', (progress) => {
+        if (options?.onProgress) {
+          options.onProgress(progress);
+        }
+      });
+
       const blob = await dash2mp4.convert(videoMimeType, videoDuration, videoInitSegmentData, audioMimeType, audioDuration, audioInitSegmentData, zippedFragments);
 
       return {

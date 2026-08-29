@@ -521,6 +521,69 @@
     "player_savevideo_complete": {
         "message": "Save complete!"
     },
+    "player_download_modal_title": {
+        "message": "Download Options"
+    },
+    "player_download_format_video": {
+        "message": "Full Video (MP4)"
+    },
+    "player_download_format_audio": {
+        "message": "Audio Only (MP3)"
+    },
+    "player_download_quality_label": {
+        "message": "Video Resolution"
+    },
+    "player_download_quality_source": {
+        "message": "Original (Source)"
+    },
+    "player_download_quality_1080p": {
+        "message": "1080p (Full HD)"
+    },
+    "player_download_quality_720p": {
+        "message": "720p (HD)"
+    },
+    "player_download_quality_480p": {
+        "message": "480p (SD)"
+    },
+    "player_download_quality_360p": {
+        "message": "360p (Compact)"
+    },
+    "player_download_badge_direct": {
+        "message": "Fast Direct"
+    },
+    "player_download_badge_downsample": {
+        "message": "Downsample"
+    },
+    "player_download_audio_bitrate_label": {
+        "message": "MP3 Audio Quality"
+    },
+    "player_download_bitrate_128k": {
+        "message": "128 kbps (Standard)"
+    },
+    "player_download_bitrate_192k": {
+        "message": "192 kbps (High Quality)"
+    },
+    "player_download_bitrate_320k": {
+        "message": "320 kbps (Extreme)"
+    },
+    "player_download_filename_label": {
+        "message": "Filename"
+    },
+    "player_download_start_btn": {
+        "message": "Start Download"
+    },
+    "player_saveaudio_start": {
+        "message": "Extracting audio..."
+    },
+    "player_saveaudio_progress": {
+        "message": "Encoding MP3 $1%"
+    },
+    "player_saveaudio_fail": {
+        "message": "Failed to extract audio!"
+    },
+    "player_saveaudio_complete": {
+        "message": "MP3 Download complete!"
+    },
     "player_archiver_progress": {
         "message": "Archiving $1%"
     },

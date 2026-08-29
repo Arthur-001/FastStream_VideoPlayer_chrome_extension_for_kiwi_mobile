@@ -96,7 +96,7 @@ export class Reencoder extends EventEmitter {
     }
   }
 
-  async setup(videoMimeType, videoDuration, videoInitSegment, audioMimeType, audioDuration, audioInitSegment) {
+  async setup(videoMimeType, videoDuration, videoInitSegment, audioMimeType, audioDuration, audioInitSegment, transcodeOptions = {}) {
     if (!videoDuration && !audioDuration) {
       throw new Error('no video or audio');
     }
@@ -142,20 +142,40 @@ export class Reencoder extends EventEmitter {
 
     if (this.videoDemuxer && this.videoDemuxer.getVideoDecoderConfig()) {
       const decoderConfig = this.videoDemuxer.getVideoDecoderConfig();
+      const sourceWidth = decoderConfig.codedWidth || decoderConfig.displayAspectWidth || 1920;
+      const sourceHeight = decoderConfig.codedHeight || decoderConfig.displayAspectHeight || 1080;
+
+      let targetWidth = sourceWidth;
+      let targetHeight = sourceHeight;
+      let targetBitrate = transcodeOptions.targetBitrate;
+
+      if (transcodeOptions.targetHeight && transcodeOptions.targetHeight < sourceHeight) {
+        targetHeight = transcodeOptions.targetHeight;
+        targetWidth = Math.round((sourceWidth * (targetHeight / sourceHeight)) / 2) * 2;
+      }
+
+      if (!targetBitrate) {
+        if (targetHeight >= 1080) targetBitrate = 4800000;
+        else if (targetHeight >= 720) targetBitrate = 2500000;
+        else if (targetHeight >= 480) targetBitrate = 1200000;
+        else if (targetHeight >= 360) targetBitrate = 700000;
+        else targetBitrate = 1500000;
+      }
+
       const encoderConfig = {
         codec: 'avc1.4d003e',
-        width: decoderConfig.codedWidth,
-        height: decoderConfig.codedHeight,
+        width: targetWidth,
+        height: targetHeight,
+        bitrate: targetBitrate,
       };
 
       console.log('Video decoder config: ', decoderConfig);
-      console.log('Video encoder config: ', encoderConfig);
-
+      console.log('Video encoder config (downsampled): ', encoderConfig);
 
       videoOutput = {
         codec: 'avc',
-        width: decoderConfig.codedWidth,
-        height: decoderConfig.codedHeight,
+        width: targetWidth,
+        height: targetHeight,
       };
 
       const support = await VideoDecoder.isConfigSupported(decoderConfig);
@@ -166,6 +186,12 @@ export class Reencoder extends EventEmitter {
       const support2 = await VideoEncoder.isConfigSupported(encoderConfig);
       if (!support2) {
         throw new Error('unsupported output video codec');
+      }
+
+      this.needsScale = (targetWidth !== sourceWidth || targetHeight !== sourceHeight);
+      if (this.needsScale) {
+        this.offscreenCanvas = new OffscreenCanvas(targetWidth, targetHeight);
+        this.offscreenCtx = this.offscreenCanvas.getContext('2d', {alpha: false});
       }
 
       this.lastVideoKeyframe = 0;
@@ -182,17 +208,32 @@ export class Reencoder extends EventEmitter {
       });
       this.videoEncoder.configure(encoderConfig);
 
-
       this.videoDecoder = new VideoDecoder({
         output: (frame) => {
           const timestamp = frame.timestamp; // frame.timestamp is in microseconds
+          let encodeFrame = frame;
+          let scaledFrame = null;
+
+          if (this.needsScale && this.offscreenCtx) {
+            this.offscreenCtx.drawImage(frame, 0, 0, targetWidth, targetHeight);
+            scaledFrame = new VideoFrame(this.offscreenCanvas, {
+              timestamp: timestamp,
+              duration: frame.duration || 0,
+            });
+            encodeFrame = scaledFrame;
+          }
+
           if (timestamp - this.lastVideoKeyframe > KEYFRAME_INTERVAL) {
             this.lastVideoKeyframe = timestamp;
-            this.videoEncoder.encode(frame, {keyFrame: true});
+            this.videoEncoder.encode(encodeFrame, {keyFrame: true});
           } else {
-            this.videoEncoder.encode(frame);
+            this.videoEncoder.encode(encodeFrame);
           }
+
           frame.close();
+          if (scaledFrame) {
+            scaledFrame.close();
+          }
           requeue();
         },
         error: (e) => {
@@ -440,18 +481,20 @@ export class Reencoder extends EventEmitter {
     });
   }
 
-  async convert(videoMimeType, videoDuration, videoInitSegment, audioMimeType, audioDuration, audioInitSegment, zippedFragments) {
+  async convert(videoMimeType, videoDuration, videoInitSegment, audioMimeType, audioDuration, audioInitSegment, zippedFragments, transcodeOptions = {}, skipConfirm = false) {
     // Check webcodec support
     if (!window.VideoDecoder || !window.VideoEncoder || !window.AudioDecoder || !window.AudioEncoder) {
       throw new Error('Webcodecs not supported');
     }
 
-    const answer = await AlertPolyfill.confirm(Localize.getMessage('player_savevideo_reencode'), 'warning');
-    if (!answer) {
-      throw new Error('Cancelled');
+    if (!skipConfirm) {
+      const answer = await AlertPolyfill.confirm(Localize.getMessage('player_savevideo_reencode'), 'warning');
+      if (!answer) {
+        throw new Error('Cancelled');
+      }
     }
 
-    await this.setup(videoMimeType, videoDuration, videoInitSegment, audioMimeType, audioDuration, audioInitSegment);
+    await this.setup(videoMimeType, videoDuration, videoInitSegment, audioMimeType, audioDuration, audioInitSegment, transcodeOptions);
 
     let lastProgress = 0;
     for (let i = 0; i < zippedFragments.length; i++) {

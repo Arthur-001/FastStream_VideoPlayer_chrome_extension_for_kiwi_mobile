@@ -89,15 +89,53 @@ export default class DirectVideoPlayer extends EventEmitter {
 
   canSave() {
     return {
-      cantSave: true,
-      canSave: false,
+      canSave: true,
+      canStream: false,
       isComplete: true,
     };
   }
 
-  async saveVideo(options) {
+  async saveVideo(options = {}) {
+    const src = this.video.src || this.source?.url;
+    if (!src) throw new Error('No source URL');
 
+    const {RequestUtils} = await import('../utils/RequestUtils.mjs');
+    const buffer = await RequestUtils.httpGetLarge(src, {}, (progress) => {
+      if (options.onProgress && !options.transcodeOptions) {
+        options.onProgress(progress);
+      }
+    });
 
+    if (options.transcodeOptions) {
+      const {Reencoder} = await import('../modules/reencoder/reencoder.mjs');
+      const reencoder = new Reencoder(options.registerCancel);
+      reencoder.on('progress', (progress) => {
+        if (options.onProgress) options.onProgress(progress);
+      });
+      const blob = await reencoder.convert(
+          'video/mp4',
+          this.duration || 0,
+          buffer,
+          'audio/mp4',
+          this.duration || 0,
+          buffer,
+          [{
+            track: 0,
+            getEntry: async () => ({getData: async () => new Blob([buffer])}),
+          }],
+          options.transcodeOptions,
+          true,
+      );
+      return {
+        extension: 'mp4',
+        blob: blob,
+      };
+    }
+
+    return {
+      extension: 'mp4',
+      blob: new Blob([buffer], {type: 'video/mp4'}),
+    };
   }
 
   get volume() {

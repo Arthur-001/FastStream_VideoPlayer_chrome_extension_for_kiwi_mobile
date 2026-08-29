@@ -1,6 +1,7 @@
 import {SubtitleTrack} from '../SubtitleTrack.mjs';
 import {VideoSource} from '../VideoSource.mjs';
 import {PlayerModes} from '../enums/PlayerModes.mjs';
+import {DownloadStatus} from '../enums/DownloadStatus.mjs';
 import {Localize} from '../modules/Localize.mjs';
 import {streamSaver} from '../modules/StreamSaver.mjs';
 import {AlertPolyfill} from '../utils/AlertPolyfill.mjs';
@@ -12,6 +13,8 @@ import {URLUtils} from '../utils/URLUtils.mjs';
 import {Utils} from '../utils/Utils.mjs';
 import {WebUtils} from '../utils/WebUtils.mjs';
 import {DOMElements} from './DOMElements.mjs';
+import {DownloadModal} from './DownloadModal.mjs';
+import {AudioExtractor} from '../modules/mp3/AudioExtractor.mjs';
 
 export class SaveManager {
   constructor(client) {
@@ -73,7 +76,7 @@ export class SaveManager {
     }
   }
 
-  async saveVideo(e, allowPartial = false) {
+  async saveVideo(e = {}, allowPartial = false) {
     if (!this.client.player) {
       await AlertPolyfill.alert(Localize.getMessage('player_nosource_alert'), 'error');
       return;
@@ -90,8 +93,8 @@ export class SaveManager {
       return;
     }
 
-    const doPartial = e.altKey || allowPartial;
-    const doDump = e.shiftKey;
+    const doPartial = e?.altKey || allowPartial;
+    const doDump = e?.shiftKey;
     const player = this.client.player;
 
     const {canSave, isComplete, canStream} = player.canSave();
@@ -115,12 +118,10 @@ export class SaveManager {
       }
     }
 
-    // Incognito mode always opens file picker anyways
-    const shouldAskForName = !EnvUtils.isIncognito();
     const suggestedName = (this.client.mediaInfo?.name || 'video').replaceAll(' ', '_');
 
     if (doDump) {
-      const name = shouldAskForName ? await AlertPolyfill.prompt(Localize.getMessage('player_filename_prompt'), suggestedName) : suggestedName;
+      const name = !EnvUtils.isIncognito() ? await AlertPolyfill.prompt(Localize.getMessage('player_filename_prompt'), suggestedName) : suggestedName;
       if (!name) {
         return;
       }
@@ -128,27 +129,60 @@ export class SaveManager {
       return;
     }
 
-    let url;
-    let filestream;
-    let name;
-    if (canStream || EnvUtils.isChrome() || true) {
-      name = shouldAskForName ? await AlertPolyfill.prompt(Localize.getMessage('player_filename_prompt'), suggestedName) : suggestedName;
-      if (!name) {
-        return;
-      }
+    const videoWidth = this.client.videoWidth || player.getVideo()?.videoWidth || 1920;
+    const videoHeight = this.client.videoHeight || player.getVideo()?.videoHeight || 1080;
+    const videoLevels = this.client.getVideoLevels() || new Map();
+
+    const dlConfig = await DownloadModal.show({
+      client: this.client,
+      suggestedName,
+      videoWidth,
+      videoHeight,
+      videoLevels,
+    });
+
+    if (!dlConfig) {
+      return;
     }
 
-    if (canStream) {
-      if (!name) {
-        return;
-      }
+    if (dlConfig.format === 'audio') {
+      await this.saveAudio(dlConfig, doPartial);
+      return;
+    }
+
+    let url;
+    let filestream;
+    const name = dlConfig.filename;
+
+    const useDirectStreamSaver = canStream && !dlConfig.isDownsample;
+    if (useDirectStreamSaver) {
       filestream = streamSaver.createWriteStream(name + '.mp4');
     }
 
-    if (this.reuseDownloadURL && this.downloadURL && isComplete) {
+    const saveOptions = {
+      onProgress: (progress) => {
+        this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_progress', [Math.floor(progress * 100)]), 'info');
+      },
+      registerCancel: (cancel) => {
+        this.downloadCancel = cancel;
+      },
+      filestream,
+      partialSave: doPartial,
+    };
+
+    if (dlConfig.isDownsample) {
+      saveOptions.transcodeOptions = {
+        targetHeight: dlConfig.targetHeight,
+        targetWidth: dlConfig.targetWidth,
+      };
+    } else if (dlConfig.isDirectTrack && dlConfig.targetLevelId) {
+      saveOptions.videoLevelID = dlConfig.targetLevelId;
+    }
+
+    if (this.reuseDownloadURL && this.downloadURL && isComplete && !dlConfig.isDownsample) {
       url = this.downloadURL;
     } else {
-      this.reuseDownloadURL = isComplete;
+      this.reuseDownloadURL = isComplete && !dlConfig.isDownsample;
       let result;
       this.makingDownload = true;
       this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_start'), 'info');
@@ -156,16 +190,7 @@ export class SaveManager {
       DOMElements.saveNotifBanner.style.color = '';
       try {
         const start = performance.now();
-        result = await player.saveVideo({
-          onProgress: (progress) => {
-            this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_progress', [Math.floor(progress * 100)]), 'info');
-          },
-          registerCancel: (cancel) => {
-            this.downloadCancel = cancel;
-          },
-          filestream,
-          partialSave: doPartial,
-        });
+        result = await player.saveVideo(saveOptions);
         const end = performance.now();
         console.log('Save took ' + (end - start) / 1000 + 's');
       } catch (e) {
@@ -180,9 +205,6 @@ export class SaveManager {
           this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_cancelled'), 'info', 2000);
         } else {
           if (await AlertPolyfill.confirm(Localize.getMessage('player_savevideo_failed_ask_archive'), 'error')) {
-            if (!name) {
-              name = shouldAskForName ? await AlertPolyfill.prompt(Localize.getMessage('player_filename_prompt'), suggestedName) : suggestedName;
-            }
             if (name) {
               this.dumpBuffer(name);
             }
@@ -195,10 +217,9 @@ export class SaveManager {
       this.downloadCancel = null;
       this.makingDownload = false;
 
-
       this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_complete'), 'info', 2000);
 
-      if (!canStream) {
+      if (!useDirectStreamSaver && result?.blob) {
         url = URL.createObjectURL(result.blob);
       }
 
@@ -210,17 +231,7 @@ export class SaveManager {
       this.downloadURL = url;
     }
 
-    if (!canStream) {
-      if (!name) {
-        name = shouldAskForName ? await AlertPolyfill.prompt(Localize.getMessage('player_filename_prompt'), suggestedName) : suggestedName;
-      }
-      if (!name) {
-        URL.revokeObjectURL(this.downloadURL);
-        this.downloadURL = null;
-        this.reuseDownloadURL = false;
-        return;
-      }
-
+    if (!useDirectStreamSaver && url) {
       setTimeout(() => {
         if (this.downloadURL !== url) return;
 
@@ -229,8 +240,129 @@ export class SaveManager {
           this.downloadURL = null;
           this.reuseDownloadURL = false;
         }
-      }, 10000);
+      }, 15000);
       await Utils.downloadURL(url, name + '.mp4');
+    }
+  }
+
+  async saveAudio(dlConfig, doPartial = false) {
+    const player = this.client.player;
+    this.makingDownload = true;
+    this.setStatusMessage('save-video', Localize.getMessage('player_saveaudio_start') || 'Extracting audio...', 'info');
+    DOMElements.saveNotifBanner.style.display = '';
+    DOMElements.saveNotifBanner.style.color = '';
+
+    try {
+      const audioExtractor = new AudioExtractor((cancel) => {
+        this.downloadCancel = cancel;
+      });
+
+      const onProgress = (progress) => {
+        this.setStatusMessage('save-video', Localize.getMessage('player_saveaudio_progress', [Math.floor(progress * 100)]) || `Encoding MP3 ${Math.floor(progress * 100)}%`, 'info');
+      };
+
+      const audioLevelID = player.getCurrentAudioLevelID?.() || null;
+      const audioFragments = audioLevelID ? (this.client.getFragments(audioLevelID) || []) : [];
+      const videoFragments = player.getCurrentVideoLevelID?.() ? (this.client.getFragments(player.getCurrentVideoLevelID()) || []) : [];
+
+      let mp3Blob = null;
+
+      if (audioFragments.length > 0) {
+        let fragments = audioFragments;
+        if (doPartial) {
+          fragments = fragments.filter((f) => f && f.status === DownloadStatus.DOWNLOAD_COMPLETE);
+        }
+
+        const audioInitSegment = fragments[-1] ?
+          new Uint8Array(await this.client.downloadManager.getEntry(fragments[-1].getContext()).getDataFromBlob()) : null;
+
+        const wrappedFragments = fragments.filter((f) => f).map((frag) => {
+          return {
+            fragment: frag,
+            getEntry: async () => {
+              if (frag.status !== DownloadStatus.DOWNLOAD_COMPLETE) {
+                while (true) {
+                  try {
+                    await player.downloadFragment(frag, -1);
+                    break;
+                  } catch (e) {
+                    if (e.message !== 'Aborted download') throw e;
+                  }
+                }
+              }
+              return this.client.downloadManager.getEntry(frag.getContext());
+            },
+          };
+        });
+
+        mp3Blob = await audioExtractor.extractFromFragments({
+          audioMimeType: 'audio/mp4',
+          audioDuration: player.duration || 0,
+          audioInitSegment: audioInitSegment,
+          fragments: wrappedFragments,
+          kbps: dlConfig.bitrate || 192,
+          onProgress,
+        });
+      } else if (videoFragments.length > 0) {
+        let fragments = videoFragments;
+        if (doPartial) {
+          fragments = fragments.filter((f) => f && f.status === DownloadStatus.DOWNLOAD_COMPLETE);
+        }
+
+        const videoInitSegment = fragments[-1] ?
+          new Uint8Array(await this.client.downloadManager.getEntry(fragments[-1].getContext()).getDataFromBlob()) : null;
+
+        const wrappedFragments = fragments.filter((f) => f).map((frag) => {
+          return {
+            fragment: frag,
+            getEntry: async () => {
+              if (frag.status !== DownloadStatus.DOWNLOAD_COMPLETE) {
+                while (true) {
+                  try {
+                    await player.downloadFragment(frag, -1);
+                    break;
+                  } catch (e) {
+                    if (e.message !== 'Aborted download') throw e;
+                  }
+                }
+              }
+              return this.client.downloadManager.getEntry(frag.getContext());
+            },
+          };
+        });
+
+        mp3Blob = await audioExtractor.extractFromFragments({
+          audioMimeType: 'video/mp4',
+          audioDuration: player.duration || 0,
+          audioInitSegment: videoInitSegment,
+          fragments: wrappedFragments,
+          kbps: dlConfig.bitrate || 192,
+          onProgress,
+        });
+      } else {
+        const videoEl = player.getVideo?.();
+        const src = videoEl?.src || this.client.source?.url;
+        if (!src) throw new Error('No audio source found');
+
+        const buffer = await RequestUtils.httpGetLarge(src);
+        mp3Blob = await audioExtractor.extractFromBuffer(buffer, dlConfig.bitrate || 192, onProgress);
+      }
+
+      DOMElements.saveNotifBanner.style.display = 'none';
+      this.downloadCancel = null;
+      this.makingDownload = false;
+
+      this.setStatusMessage('save-video', Localize.getMessage('player_saveaudio_complete') || 'MP3 Download complete!', 'info', 2000);
+
+      const url = URL.createObjectURL(mp3Blob);
+      setTimeout(() => URL.revokeObjectURL(url), 15000);
+      await Utils.downloadURL(url, dlConfig.filename + '.mp3');
+    } catch (e) {
+      console.error('saveAudio error:', e);
+      this.setStatusMessage('save-video', Localize.getMessage('player_saveaudio_fail') || 'Failed to extract audio!', 'error', 2000);
+      this.makingDownload = false;
+      this.downloadCancel = null;
+      DOMElements.saveNotifBanner.style.display = 'none';
     }
   }
 

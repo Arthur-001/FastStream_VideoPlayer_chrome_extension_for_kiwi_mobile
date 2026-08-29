@@ -117,8 +117,9 @@ export default class HLSPlayer extends EventEmitter {
     };
   }
 
-  async saveVideo(options) {
-    const fragments = this.client.getFragments(this.getCurrentVideoLevelID()) || [];
+  async saveVideo(options = {}) {
+    const videoLevelID = options.videoLevelID || this.getCurrentVideoLevelID();
+    const fragments = this.client.getFragments(videoLevelID) || [];
     const audioFragments = this.client.getFragments(this.getCurrentAudioLevelID()) || [];
 
     let zippedFragments = Utils.zipTimedFragments([fragments, audioFragments]);
@@ -149,7 +150,7 @@ export default class HLSPlayer extends EventEmitter {
       };
     });
 
-    const level = this.hls.levels[this.getIndexes(this.getCurrentVideoLevelID()).levelID];
+    const level = this.hls.levels[this.getIndexes(videoLevelID).levelID];
     const audioLevel = this.hls.audioTracks[this.hls.audioTrack];
 
     let levelInitData = null;
@@ -164,7 +165,30 @@ export default class HLSPlayer extends EventEmitter {
     }
 
     try {
-      if (levelInitData && audioLevelInitData) {
+      if (options.transcodeOptions) {
+        const {Reencoder} = await import('../../modules/reencoder/reencoder.mjs');
+        const reencoder = new Reencoder(options.registerCancel);
+        reencoder.on('progress', (progress) => {
+          if (options?.onProgress) {
+            options.onProgress(progress);
+          }
+        });
+        const blob = await reencoder.convert(
+            'video/mp4',
+            level?.details?.totalduration || 0,
+            levelInitData ? levelInitData.buffer : null,
+            'audio/mp4',
+            audioLevel?.details?.totalduration || 0,
+            audioLevelInitData ? audioLevelInitData.buffer : null,
+            zippedFragments,
+            options.transcodeOptions,
+            true,
+        );
+        return {
+          extension: 'mp4',
+          blob: blob,
+        };
+      } else if (levelInitData && audioLevelInitData) {
         const {MP4Merger} = await import('../../modules/dash2mp4/mp4merger.mjs');
 
         const mp4merger = new MP4Merger(options.registerCancel);
