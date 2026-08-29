@@ -17,18 +17,38 @@ const KEYFRAME_INTERVAL = 10 * 1000 * 1000; // 10 seconds
  * REQUIRES WebCodecs. Not supported in Firefox.
  */
 export class Reencoder extends EventEmitter {
-  constructor(registerCancel) {
+  constructor(registerCancel, registerPause) {
     super();
     this.blobManager = new FSBlob();
+    this.isPaused = false;
     if (registerCancel) {
       registerCancel(() => {
         this.cancel();
+      });
+    }
+    if (registerPause) {
+      registerPause((shouldPause) => {
+        if (shouldPause) {
+          this.pause();
+        } else {
+          this.resume();
+        }
       });
     }
   }
 
   cancel() {
     this.cancelled = true;
+  }
+
+  pause() {
+    this.isPaused = true;
+    this.emit('pause');
+  }
+
+  resume() {
+    this.isPaused = false;
+    this.emit('resume');
   }
 
   arrayEquals(a, b) {
@@ -562,6 +582,10 @@ export class Reencoder extends EventEmitter {
     let processed = 0;
 
     for (let i = 0; i < videoChunks.length; i++) {
+      while (this.isPaused && !this.cancelled) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+
       if (this.cancelled) {
         this.destroy();
         this.blobManager.close();
@@ -634,6 +658,10 @@ export class Reencoder extends EventEmitter {
 
     let lastProgress = 0;
     for (let i = 0; i < zippedFragments.length; i++) {
+      while (this.isPaused && !this.cancelled) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+
       if (this.cancelled) {
         this.destroy();
         this.blobManager.close();

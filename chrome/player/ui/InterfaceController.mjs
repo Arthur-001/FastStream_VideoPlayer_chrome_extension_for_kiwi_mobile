@@ -317,6 +317,8 @@ export class InterfaceController {
     } else if (!this.shownDownloadComplete) {
       this.shownDownloadComplete = true;
       this.setStatusMessage('download', Localize.getMessage('player_fragment_allbuffered'), 'success', 2000);
+    } else if (this.statusManager.getStatusMessage('download') === Localize.getMessage('player_download_paused')) {
+      this.setStatusMessage('download', null);
     }
 
     if (failed > 0) {

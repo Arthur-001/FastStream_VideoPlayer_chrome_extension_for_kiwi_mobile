@@ -9,18 +9,38 @@ import {ReferenceTypes} from '../../enums/ReferenceTypes.mjs';
  * High-performance Audio Extractor and MP3 Converter
  */
 export class AudioExtractor extends EventEmitter {
-  constructor(registerCancel) {
+  constructor(registerCancel, registerPause) {
     super();
     this.cancelled = false;
+    this.isPaused = false;
     if (registerCancel) {
       registerCancel(() => {
         this.cancelled = true;
+      });
+    }
+    if (registerPause) {
+      registerPause((shouldPause) => {
+        if (shouldPause) {
+          this.pause();
+        } else {
+          this.resume();
+        }
       });
     }
   }
 
   cancel() {
     this.cancelled = true;
+  }
+
+  pause() {
+    this.isPaused = true;
+    this.emit('pause');
+  }
+
+  resume() {
+    this.isPaused = false;
+    this.emit('resume');
   }
 
   /**
@@ -62,6 +82,10 @@ export class AudioExtractor extends EventEmitter {
       const totalSamples = leftChannel.length;
 
       for (let i = 0; i < totalSamples; i += chunkSize) {
+        while (this.isPaused && !this.cancelled) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+
         if (this.cancelled) throw new Error('Cancelled');
 
         const end = Math.min(i + chunkSize, totalSamples);
@@ -162,6 +186,10 @@ export class AudioExtractor extends EventEmitter {
       let decoderConfigured = false;
 
       for (let i = 0; i < fragments.length; i++) {
+        while (this.isPaused && !this.cancelled) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+
         if (this.cancelled) throw new Error('Cancelled');
 
         const fragData = fragments[i];

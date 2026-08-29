@@ -1,9 +1,105 @@
 import {Localize} from '../modules/Localize.mjs';
+import {AlertPolyfill} from '../utils/AlertPolyfill.mjs';
 
 /**
  * Mobile-optimized Touch Download Modal for Kiwi Browser & Desktop
  */
 export class DownloadModal {
+  static activeModalInstance = null;
+
+  /**
+   * Format byte count into human-readable string
+   * @param {number} bytes
+   * @return {string}
+   */
+  static formatBytes(bytes) {
+    if (!bytes || bytes <= 0 || isNaN(bytes)) return '0 MB';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    const val = bytes / Math.pow(k, i);
+    return `${val < 10 ? val.toFixed(1) : Math.round(val)} ${sizes[i]}`;
+  }
+
+  /**
+   * Format seconds remaining into human-readable string
+   * @param {number} seconds
+   * @return {string}
+   */
+  static formatTimeRemaining(seconds) {
+    if (isNaN(seconds) || seconds <= 0 || !isFinite(seconds)) return 'calculating...';
+    if (seconds < 60) return `~${Math.ceil(seconds)}s remaining`;
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `~${mins}m ${secs}s remaining`;
+  }
+
+  /**
+   * Estimate video and audio output sizes in O(1) time
+   * @param {Object} client
+   * @param {number} duration
+   * @param {Array} levelsArray
+   * @return {Object}
+   */
+  static estimateSizes(client, duration = 0, levelsArray = []) {
+    const dur = (duration && duration > 0) ? duration : (client?.duration || client?.player?.duration || 0);
+
+    // Baseline fallback bitrates (bps)
+    const bitratePreset = {
+      2160: 16000000,
+      1440: 9000000,
+      1080: 4800000,
+      720: 2500000,
+      480: 1200000,
+      360: 700000,
+    };
+
+    const getBitrateForHeight = (h) => {
+      if (h >= 2160) return bitratePreset[2160];
+      if (h >= 1440) return bitratePreset[1440];
+      if (h >= 1080) return bitratePreset[1080];
+      if (h >= 720) return bitratePreset[720];
+      if (h >= 480) return bitratePreset[480];
+      return bitratePreset[360];
+    };
+
+    const calculateVideoOptionSize = (opt) => {
+      if (!dur || dur <= 0) return 0;
+
+      // 1. If direct level has manifest bitrate/bandwidth
+      if (opt.isDirect && opt.levelId != null) {
+        const lvl = levelsArray.find((l) => l.id === opt.levelId);
+        const br = lvl?.bitrate || lvl?.bandwidth;
+        if (br && br > 0) {
+          return Math.round((br * dur) / 8);
+        }
+      }
+
+      // 2. If downsampled option
+      if (!opt.isDirect) {
+        const vBitrate = getBitrateForHeight(opt.height);
+        const aBitrate = 128000;
+        return Math.round(((vBitrate + aBitrate) * dur) / 8);
+      }
+
+      // 3. Fallback based on height
+      const vBitrate = getBitrateForHeight(opt.height);
+      const aBitrate = 128000;
+      return Math.round(((vBitrate + aBitrate) * dur) / 8);
+    };
+
+    const calculateAudioOptionSize = (kbps) => {
+      if (!dur || dur <= 0) return 0;
+      return Math.round(((kbps * 1000) / 8) * dur);
+    };
+
+    return {
+      duration: dur,
+      calculateVideoOptionSize,
+      calculateAudioOptionSize,
+    };
+  }
+
   /**
    * Show the touch download modal
    * @param {Object} options
@@ -46,6 +142,9 @@ export class DownloadModal {
         sourceWidth = 1920;
       }
 
+      const duration = client?.duration || client?.player?.duration || 0;
+      const estimator = DownloadModal.estimateSizes(client, duration, levelsArray);
+
       // Build resolution tiers <= sourceHeight
       const tierPresets = [
         {height: 2160, name: '4K (2160p)', key: 'player_download_quality_2160p'},
@@ -59,28 +158,33 @@ export class DownloadModal {
       const resolutionOptions = [];
 
       // 1. Source (Original) option
-      resolutionOptions.push({
+      const sourceOpt = {
         id: 'source',
         label: `${Localize.getMessage('player_download_quality_source') || 'Source'} (${sourceHeight}p)`,
         height: sourceHeight,
         width: sourceWidth,
         isDirect: true,
         levelId: currentLevel?.id || null,
-      });
+      };
+      sourceOpt.estimatedBytes = estimator.calculateVideoOptionSize(sourceOpt);
+      sourceOpt.estimatedSizeFormatted = sourceOpt.estimatedBytes > 0 ? `~${DownloadModal.formatBytes(sourceOpt.estimatedBytes)}` : '';
+      resolutionOptions.push(sourceOpt);
 
       // 2. Downsampling options strictly smaller than sourceHeight
       for (const preset of tierPresets) {
         if (sourceHeight > preset.height + 20) { // allow small margin
-          // Check if manifest already has a stream matching this resolution
           const matchingLevel = levelsArray.find((l) => Math.abs(l.height - preset.height) <= 30);
-          resolutionOptions.push({
+          const opt = {
             id: `down_${preset.height}`,
             label: Localize.getMessage(preset.key) || preset.name,
             height: preset.height,
             width: Math.round((sourceWidth * (preset.height / sourceHeight)) / 2) * 2,
             isDirect: !!matchingLevel,
             levelId: matchingLevel?.id || null,
-          });
+          };
+          opt.estimatedBytes = estimator.calculateVideoOptionSize(opt);
+          opt.estimatedSizeFormatted = opt.estimatedBytes > 0 ? `~${DownloadModal.formatBytes(opt.estimatedBytes)}` : '';
+          resolutionOptions.push(opt);
         }
       }
 
@@ -90,6 +194,11 @@ export class DownloadModal {
         {kbps: 320, label: Localize.getMessage('player_download_bitrate_320k') || '320 kbps (Extreme)'},
         {kbps: 128, label: Localize.getMessage('player_download_bitrate_128k') || '128 kbps (Standard)'},
       ];
+
+      audioBitrateOptions.forEach((opt) => {
+        opt.estimatedBytes = estimator.calculateAudioOptionSize(opt.kbps);
+        opt.estimatedSizeFormatted = opt.estimatedBytes > 0 ? `~${DownloadModal.formatBytes(opt.estimatedBytes)}` : '';
+      });
 
       let selectedFormat = 'video'; // 'video' | 'audio'
       let selectedResolution = resolutionOptions[0];
@@ -198,7 +307,10 @@ export class DownloadModal {
             <span class="kiwi-dl-chip-label">${opt.label}</span>
             <span class="kiwi-dl-badge ${badgeClass}">${badgeText}</span>
           </div>
-          <div class="kiwi-dl-chip-sub">${opt.width}x${opt.height}</div>
+          <div class="kiwi-dl-chip-sub">
+            <span>${opt.width}x${opt.height}</span>
+            ${opt.estimatedSizeFormatted ? `<span class="kiwi-dl-chip-size">${opt.estimatedSizeFormatted}</span>` : ''}
+          </div>
         `;
 
         chip.addEventListener('click', (e) => {
@@ -224,7 +336,10 @@ export class DownloadModal {
             <span class="kiwi-dl-chip-label">${opt.label}</span>
             <span class="kiwi-dl-badge badge-mp3">MP3</span>
           </div>
-          <div class="kiwi-dl-chip-sub">~${Math.round(opt.kbps / 8 * 60 / 1024 * 10) / 10} MB/min</div>
+          <div class="kiwi-dl-chip-sub">
+            <span>~${Math.round(opt.kbps / 8 * 60 / 1024 * 10) / 10} MB/min</span>
+            ${opt.estimatedSizeFormatted ? `<span class="kiwi-dl-chip-size">${opt.estimatedSizeFormatted}</span>` : ''}
+          </div>
         `;
 
         chip.addEventListener('click', (e) => {
@@ -297,9 +412,253 @@ export class DownloadModal {
           targetLevelId: selectedResolution.levelId,
           targetHeight: selectedResolution.height,
           targetWidth: selectedResolution.width,
+          estimatedBytes: selectedFormat === 'video' ? selectedResolution.estimatedBytes : selectedBitrate.estimatedBytes,
         };
         cleanup(result);
       });
     });
+  }
+
+  /**
+   * Open the Active Download Task Bottom Sheet
+   * @param {Object} taskState
+   */
+  static showActiveTask(taskState) {
+    if (!taskState) return;
+
+    // If modal already open for this active task, simply update and bring into view
+    const existing = document.getElementById('kiwi-download-modal');
+    if (existing && DownloadModal.activeModalInstance?.type === 'activeTask') {
+      DownloadModal.updateActiveTask(taskState);
+      existing.classList.add('active');
+      return;
+    }
+
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'kiwi-download-modal';
+    overlay.className = 'kiwi-dl-overlay';
+
+    const sheet = document.createElement('div');
+    sheet.className = 'kiwi-dl-sheet';
+
+    const formatPct = (p) => `${Math.min(100, Math.max(0, Math.round((p || 0) * 100)))}%`;
+
+    sheet.innerHTML = `
+      <div class="kiwi-dl-handle-bar">
+        <div class="kiwi-dl-handle"></div>
+      </div>
+      
+      <div class="kiwi-dl-header">
+        <div class="kiwi-dl-title">
+          <svg class="kiwi-dl-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span id="kiwi-dl-active-header-title">${taskState.title || 'Active Download'}</span>
+        </div>
+        <button type="button" class="kiwi-dl-close-btn" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="kiwi-dl-body">
+        <div class="kiwi-dl-active-card">
+          <div class="kiwi-dl-task-meta">
+            <div class="kiwi-dl-task-info">
+              <div class="kiwi-dl-task-title" id="kiwi-dl-task-title">${taskState.title || 'Processing media...'}</div>
+              <div class="kiwi-dl-task-file">
+                <span id="kiwi-dl-task-name">${taskState.filename || 'video'}</span>
+                <span class="kiwi-dl-ext-badge" id="kiwi-dl-task-ext">.${taskState.extension || 'mp4'}</span>
+              </div>
+            </div>
+            <div class="kiwi-dl-status-badge ${taskState.isPaused ? 'status-paused' : 'status-running'}" id="kiwi-dl-status-badge">
+              ${taskState.isPaused ? 'Paused' : 'Active'}
+            </div>
+          </div>
+
+          <div class="kiwi-dl-progress-box">
+            <div class="kiwi-dl-progress-track">
+              <div class="kiwi-dl-progress-fill ${taskState.isPaused ? 'paused' : ''}" id="kiwi-dl-progress-fill" style="width: ${formatPct(taskState.progress)};"></div>
+            </div>
+            <div class="kiwi-dl-progress-labels">
+              <span class="kiwi-dl-progress-phase" id="kiwi-dl-progress-phase">${taskState.phase || 'Downloading...'}</span>
+              <span class="kiwi-dl-progress-pct" id="kiwi-dl-progress-pct">${formatPct(taskState.progress)}</span>
+            </div>
+          </div>
+
+          <div class="kiwi-dl-metrics-grid">
+            <div class="kiwi-dl-metric-card">
+              <span class="kiwi-dl-metric-label">Data</span>
+              <span class="kiwi-dl-metric-val" id="kiwi-dl-metric-size">${DownloadModal.formatBytes(taskState.currentBytes || 0)} / ~${DownloadModal.formatBytes(taskState.totalBytes || 0)}</span>
+            </div>
+            <div class="kiwi-dl-metric-card">
+              <span class="kiwi-dl-metric-label">Speed</span>
+              <span class="kiwi-dl-metric-val" id="kiwi-dl-metric-speed">${taskState.speedFormatted || (taskState.isPaused ? '0 KB/s' : '--')}</span>
+            </div>
+            <div class="kiwi-dl-metric-card">
+              <span class="kiwi-dl-metric-label">Remaining</span>
+              <span class="kiwi-dl-metric-val" id="kiwi-dl-metric-eta">${taskState.isPaused ? 'Paused' : (taskState.etaFormatted || 'calculating...')}</span>
+            </div>
+          </div>
+
+          <div class="kiwi-dl-active-actions">
+            <button type="button" class="kiwi-dl-btn-action ${taskState.isPaused ? 'kiwi-dl-btn-resume' : 'kiwi-dl-btn-pause'}" id="kiwi-dl-btn-pause-toggle">
+              ${taskState.isPaused ? `
+                <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                <span>Resume</span>
+              ` : `
+                <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                <span>Pause</span>
+              `}
+            </button>
+            <button type="button" class="kiwi-dl-btn-action kiwi-dl-btn-stop" id="kiwi-dl-btn-stop-task">
+              <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+              <span>Stop</span>
+            </button>
+          </div>
+
+          <div class="kiwi-dl-bg-hint">
+            ${Localize.getMessage('player_download_bg_hint') || 'Closing this sheet keeps the download running in the background.'}
+          </div>
+        </div>
+      </div>
+    `;
+
+    overlay.appendChild(sheet);
+    document.body.appendChild(overlay);
+
+    DownloadModal.activeModalInstance = {
+      type: 'activeTask',
+      overlay,
+      sheet,
+      taskState,
+    };
+
+    // Animate in
+    requestAnimationFrame(() => {
+      overlay.classList.add('active');
+      sheet.classList.add('active');
+    });
+
+    const hide = () => {
+      overlay.classList.remove('active');
+      sheet.classList.remove('active');
+      setTimeout(() => {
+        if (DownloadModal.activeModalInstance?.overlay === overlay) {
+          DownloadModal.activeModalInstance = null;
+        }
+        overlay.remove();
+      }, 220);
+    };
+
+    // Close button / backdrop tap: closes sheet, task continues in background
+    sheet.querySelector('.kiwi-dl-close-btn').addEventListener('click', hide);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) hide();
+    });
+
+    // Pause/Resume button
+    const pauseBtn = sheet.querySelector('#kiwi-dl-btn-pause-toggle');
+    pauseBtn.addEventListener('click', () => {
+      if (taskState.togglePause) {
+        taskState.togglePause();
+      }
+      DownloadModal.updateActiveTask(taskState);
+    });
+
+    // Stop button
+    const stopBtn = sheet.querySelector('#kiwi-dl-btn-stop-task');
+    stopBtn.addEventListener('click', async () => {
+      const confirmMsg = Localize.getMessage('player_download_stop_confirm') || 'Stop and cancel the active download?';
+      const ok = await AlertPolyfill.confirm(confirmMsg, 'warning');
+      if (ok) {
+        if (taskState.cancel) {
+          taskState.cancel();
+        }
+        hide();
+      }
+    });
+  }
+
+  /**
+   * Update active download task sheet in real-time
+   * @param {Object} taskState
+   */
+  static updateActiveTask(taskState) {
+    if (!taskState) return;
+
+    const overlay = document.getElementById('kiwi-download-modal');
+    if (!overlay) return;
+
+    const formatPct = (p) => `${Math.min(100, Math.max(0, Math.round((p || 0) * 100)))}%`;
+
+    const fill = overlay.querySelector('#kiwi-dl-progress-fill');
+    const phaseEl = overlay.querySelector('#kiwi-dl-progress-phase');
+    const pctEl = overlay.querySelector('#kiwi-dl-progress-pct');
+    const sizeEl = overlay.querySelector('#kiwi-dl-metric-size');
+    const speedEl = overlay.querySelector('#kiwi-dl-metric-speed');
+    const etaEl = overlay.querySelector('#kiwi-dl-metric-eta');
+    const badgeEl = overlay.querySelector('#kiwi-dl-status-badge');
+    const pauseBtn = overlay.querySelector('#kiwi-dl-btn-pause-toggle');
+    const titleEl = overlay.querySelector('#kiwi-dl-task-title');
+
+    if (titleEl && taskState.title) titleEl.textContent = taskState.title;
+
+    if (fill) {
+      fill.style.width = formatPct(taskState.progress);
+      if (taskState.isPaused) {
+        fill.classList.add('paused');
+      } else {
+        fill.classList.remove('paused');
+      }
+    }
+
+    if (phaseEl && taskState.phase) phaseEl.textContent = taskState.phase;
+    if (pctEl) pctEl.textContent = formatPct(taskState.progress);
+
+    if (sizeEl) {
+      const cur = DownloadModal.formatBytes(taskState.currentBytes || 0);
+      const tot = DownloadModal.formatBytes(taskState.totalBytes || 0);
+      sizeEl.textContent = `${cur} / ~${tot}`;
+    }
+
+    if (speedEl) {
+      speedEl.textContent = taskState.isPaused ? '0 KB/s' : (taskState.speedFormatted || '--');
+    }
+
+    if (etaEl) {
+      etaEl.textContent = taskState.isPaused ? 'Paused' : (taskState.etaFormatted || 'calculating...');
+    }
+
+    if (badgeEl) {
+      badgeEl.className = `kiwi-dl-status-badge ${taskState.isPaused ? 'status-paused' : 'status-running'}`;
+      badgeEl.textContent = taskState.isPaused ? 'Paused' : 'Active';
+    }
+
+    if (pauseBtn) {
+      pauseBtn.className = `kiwi-dl-btn-action ${taskState.isPaused ? 'kiwi-dl-btn-resume' : 'kiwi-dl-btn-pause'}`;
+      pauseBtn.innerHTML = taskState.isPaused ? `
+        <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        <span>Resume</span>
+      ` : `
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+        <span>Pause</span>
+      `;
+    }
+  }
+
+  /**
+   * Close active task modal if open
+   */
+  static closeActiveTask() {
+    const existing = document.getElementById('kiwi-download-modal');
+    if (existing && DownloadModal.activeModalInstance?.type === 'activeTask') {
+      existing.classList.remove('active');
+      setTimeout(() => {
+        existing.remove();
+        DownloadModal.activeModalInstance = null;
+      }, 220);
+    }
   }
 }

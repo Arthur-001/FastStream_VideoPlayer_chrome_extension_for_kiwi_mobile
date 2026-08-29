@@ -21,6 +21,7 @@ export class SaveManager {
     this.client = client;
     this.downloadURL = null;
     this.reuseDownloadURL = false;
+    this.currentTask = null;
   }
 
   setupUI() {
@@ -42,6 +43,88 @@ export class SaveManager {
 
   setStatusMessage(key, message, type, expiry) {
     this.client.interfaceController.setStatusMessage(key, message, type, expiry);
+  }
+
+  updateTaskProgress({progress, phase, currentBytes, totalBytes}) {
+    if (!this.currentTask) return;
+    const now = performance.now();
+    this.currentTask.progress = Math.min(1.0, Math.max(0, progress || 0));
+    if (phase) {
+      this.currentTask.phase = phase;
+      if (!this.currentTask.isPaused) {
+        this.currentTask.lastActivePhase = phase;
+      }
+    }
+
+    if (totalBytes && totalBytes > 0) this.currentTask.totalBytes = totalBytes;
+    if (currentBytes != null && currentBytes > 0) {
+      this.currentTask.currentBytes = currentBytes;
+    } else if (this.currentTask.totalBytes > 0) {
+      this.currentTask.currentBytes = Math.round(this.currentTask.progress * this.currentTask.totalBytes);
+    }
+
+    const elapsed = Math.max(0.1, (now - this.currentTask.startTime) / 1000);
+    const downloaded = this.currentTask.currentBytes || 0;
+    const speed = downloaded / elapsed; // bytes/sec
+    this.currentTask.speed = speed;
+    this.currentTask.speedFormatted = `${DownloadModal.formatBytes(speed)}/s`;
+
+    const remainingBytes = Math.max(0, (this.currentTask.totalBytes || 0) - downloaded);
+    const etaSecs = (speed > 1000) ? remainingBytes / speed : 0;
+    this.currentTask.etaFormatted = DownloadModal.formatTimeRemaining(etaSecs);
+
+    DownloadModal.updateActiveTask(this.currentTask);
+  }
+
+  toggleCurrentTaskPause() {
+    if (!this.currentTask) return;
+    this.currentTask.isPaused = !this.currentTask.isPaused;
+
+    if (this.currentTask.onPauseChanged) {
+      this.currentTask.onPauseChanged(this.currentTask.isPaused);
+    }
+
+    if (this.client?.downloadManager) {
+      if (this.currentTask.isPaused) {
+        this.client.downloadManager.pause();
+      } else {
+        this.client.downloadManager.resume();
+        this.client.interfaceController.setStatusMessage('download', null);
+        this.client.interfaceController.updateDownloadStatus();
+      }
+    }
+
+    DOMElements.saveNotifBanner.style.color = this.currentTask.isPaused ? 'gold' : '';
+    this.updateTaskProgress({
+      progress: this.currentTask.progress,
+      phase: this.currentTask.isPaused ? 'Paused' : (this.currentTask.lastActivePhase || 'Downloading...'),
+    });
+  }
+
+  cleanupTaskState(statusMessage = null, messageType = 'info', expiry = 2000) {
+    if (this.client?.downloadManager?.paused) {
+      this.client.downloadManager.resume();
+    }
+    this.client?.interfaceController?.setStatusMessage('download', null);
+    this.client?.interfaceController?.updateDownloadStatus();
+
+    this.makingDownload = false;
+    this.currentTask = null;
+    this.downloadCancel = null;
+    DOMElements.saveNotifBanner.style.display = 'none';
+    DOMElements.saveNotifBanner.style.color = '';
+    DownloadModal.closeActiveTask();
+
+    if (statusMessage) {
+      this.setStatusMessage('save-video', statusMessage, messageType, expiry);
+    }
+  }
+
+  cancelCurrentTask() {
+    if (this.downloadCancel) {
+      this.downloadCancel();
+    }
+    this.cleanupTaskState(Localize.getMessage('player_savevideo_cancelled') || 'Download cancelled', 'info', 2000);
   }
 
   async saveScreenshot() {
@@ -83,10 +166,8 @@ export class SaveManager {
     }
 
     if (this.makingDownload) {
-      if (this.downloadCancel) {
-        this.downloadCancel();
-        DOMElements.saveNotifBanner.style.color = 'gold';
-        this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_cancelling'), 'info');
+      if (this.currentTask) {
+        DownloadModal.showActiveTask(this.currentTask);
       } else {
         await AlertPolyfill.alert(Localize.getMessage('player_savevideo_inprogress_alert'), 'error');
       }
@@ -177,10 +258,32 @@ export class SaveManager {
       filestream = streamSaver.createWriteStream(name + '.mp4');
     }
 
+    this.currentTask = {
+      type: 'video',
+      title: dlConfig.isDownsample ? `Downsampling to ${dlConfig.targetHeight}p` : `Downloading ${dlConfig.resolution?.label || 'Video'}`,
+      filename: dlConfig.filename,
+      extension: 'mp4',
+      progress: 0,
+      phase: dlConfig.isDownsample ? 'Downloading source stream...' : 'Downloading video...',
+      lastActivePhase: dlConfig.isDownsample ? 'Downloading source stream...' : 'Downloading video...',
+      currentBytes: 0,
+      totalBytes: dlConfig.estimatedBytes || 0,
+      startTime: performance.now(),
+      isPaused: false,
+      onPauseChanged: null,
+      togglePause: () => this.toggleCurrentTaskPause(),
+      cancel: () => this.cancelCurrentTask(),
+    };
+
     const saveOptions = {
       onProgress: (progress) => {
-        const pct = Math.floor(progress * (dlConfig.isDownsample ? 40 : 100));
+        const overallProgress = dlConfig.isDownsample ? (progress * 0.4) : progress;
+        const pct = Math.floor(overallProgress * 100);
         this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_progress', [pct]), 'info');
+        this.updateTaskProgress({
+          progress: overallProgress,
+          phase: dlConfig.isDownsample ? `Downloading source (${Math.floor(progress * 100)}%)` : `Downloading (${Math.floor(progress * 100)}%)`,
+        });
       },
       registerCancel: (cancel) => {
         this.downloadCancel = cancel;
@@ -209,10 +312,7 @@ export class SaveManager {
         console.log('Save took ' + (end - start) / 1000 + 's');
       } catch (e) {
         console.error(e);
-        this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_fail'), 'error', 2000);
-        this.makingDownload = false;
-        this.downloadCancel = null;
-        DOMElements.saveNotifBanner.style.display = 'none';
+        this.cleanupTaskState(Localize.getMessage('player_savevideo_fail'), 'error', 2000);
 
         if (e.message === 'Cancelled') {
           this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_cancelled'), 'info', 2000);
@@ -228,18 +328,28 @@ export class SaveManager {
 
       if (dlConfig.isDownsample) {
         if (!result?.blob) {
-          this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_fail'), 'error', 2000);
-          this.makingDownload = false;
-          this.downloadCancel = null;
-          DOMElements.saveNotifBanner.style.display = 'none';
+          this.cleanupTaskState(Localize.getMessage('player_savevideo_fail'), 'error', 2000);
           return;
         }
 
         try {
           const {Reencoder} = await import('../modules/reencoder/reencoder.mjs');
+          let reencoderPause = null;
           const reencoder = new Reencoder((cancel) => {
             this.downloadCancel = cancel;
+          }, (pauseFn) => {
+            reencoderPause = pauseFn;
           });
+
+          if (this.currentTask) {
+            this.currentTask.title = `Downsampling to ${dlConfig.targetHeight}p`;
+            this.currentTask.phase = 'Downsampling video frames...';
+            this.currentTask.lastActivePhase = 'Downsampling video frames...';
+            this.currentTask.onPauseChanged = (paused) => {
+              if (reencoderPause) reencoderPause(paused);
+            };
+          }
+
           this.setStatusMessage('save-video', 'Downsampling video...', 'info');
           const downscaledBlob = await reencoder.convertMP4Blob(
             result.blob,
@@ -248,26 +358,24 @@ export class SaveManager {
               targetWidth: dlConfig.targetWidth,
             },
             (p) => {
-              const pct = 40 + Math.floor(p * 60);
+              const overallProgress = 0.4 + (p * 0.6);
+              const pct = Math.floor(overallProgress * 100);
               this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_progress', [pct]), 'info');
+              this.updateTaskProgress({
+                progress: overallProgress,
+                phase: `Downsampling frames (${Math.floor(p * 100)}%)`,
+              });
             }
           );
           result = {blob: downscaledBlob, extension: 'mp4'};
         } catch (e) {
           console.error('Downsampling failed:', e.name, e.message, e.stack || e);
-          this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_fail'), 'error', 2000);
-          this.makingDownload = false;
-          this.downloadCancel = null;
-          DOMElements.saveNotifBanner.style.display = 'none';
+          this.cleanupTaskState(Localize.getMessage('player_savevideo_fail'), 'error', 2000);
           return;
         }
       }
 
-      DOMElements.saveNotifBanner.style.display = 'none';
-      this.downloadCancel = null;
-      this.makingDownload = false;
-
-      this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_complete'), 'info', 2000);
+      this.cleanupTaskState(Localize.getMessage('player_savevideo_complete'), 'info', 2000);
 
       if (!useDirectStreamSaver && result?.blob) {
         url = URL.createObjectURL(result.blob);
@@ -302,13 +410,35 @@ export class SaveManager {
     DOMElements.saveNotifBanner.style.display = '';
     DOMElements.saveNotifBanner.style.color = '';
 
+    this.currentTask = {
+      type: 'audio',
+      title: `Extracting MP3 (${dlConfig.bitrate || 192} kbps)`,
+      filename: dlConfig.filename,
+      extension: 'mp3',
+      progress: 0,
+      phase: 'Downloading audio source...',
+      lastActivePhase: 'Downloading audio source...',
+      currentBytes: 0,
+      totalBytes: dlConfig.estimatedBytes || 0,
+      startTime: performance.now(),
+      isPaused: false,
+      onPauseChanged: null,
+      togglePause: () => this.toggleCurrentTaskPause(),
+      cancel: () => this.cancelCurrentTask(),
+    };
+
     try {
       let mediaBlob = null;
       const saveResult = await player.saveVideo({
         filestream: null,
         partialSave: doPartial,
         onProgress: (p) => {
+          const overallProgress = p * 0.4;
           this.setStatusMessage('save-video', `Downloading ${Math.floor(p * 40)}%`, 'info');
+          this.updateTaskProgress({
+            progress: overallProgress,
+            phase: `Downloading source (${Math.floor(p * 100)}%)`,
+          });
         },
         registerCancel: (cancel) => {
           this.downloadCancel = cancel;
@@ -330,35 +460,44 @@ export class SaveManager {
         throw new Error('No media data available for audio extraction');
       }
 
+      let audioPause = null;
       const audioExtractor = new AudioExtractor((cancel) => {
         this.downloadCancel = cancel;
+      }, (pauseFn) => {
+        audioPause = pauseFn;
       });
+
+      if (this.currentTask) {
+        this.currentTask.phase = 'Encoding MP3 audio...';
+        this.currentTask.lastActivePhase = 'Encoding MP3 audio...';
+        this.currentTask.onPauseChanged = (paused) => {
+          if (audioPause) audioPause(paused);
+        };
+      }
 
       this.setStatusMessage('save-video', 'Encoding MP3...', 'info');
       const mp3Blob = await audioExtractor.extractFromBuffer(
         mediaBlob,
         dlConfig.bitrate || 192,
         (p) => {
-          const pct = 40 + Math.floor(p * 60);
+          const overallProgress = 0.4 + (p * 0.6);
+          const pct = Math.floor(overallProgress * 100);
           this.setStatusMessage('save-video', Localize.getMessage('player_saveaudio_progress', [pct]) || `Encoding MP3 ${pct}%`, 'info');
+          this.updateTaskProgress({
+            progress: overallProgress,
+            phase: `Encoding MP3 (${Math.floor(p * 100)}%)`,
+          });
         }
       );
 
-      DOMElements.saveNotifBanner.style.display = 'none';
-      this.downloadCancel = null;
-      this.makingDownload = false;
-
-      this.setStatusMessage('save-video', Localize.getMessage('player_saveaudio_complete') || 'MP3 Download complete!', 'info', 2000);
+      this.cleanupTaskState(Localize.getMessage('player_saveaudio_complete') || 'MP3 Download complete!', 'info', 2000);
 
       const url = URL.createObjectURL(mp3Blob);
       setTimeout(() => URL.revokeObjectURL(url), 15000);
       await Utils.downloadURL(url, dlConfig.filename + '.mp3');
     } catch (e) {
       console.error('saveAudio error:', e);
-      this.setStatusMessage('save-video', Localize.getMessage('player_saveaudio_fail') || 'Failed to extract audio!', 'error', 2000);
-      this.makingDownload = false;
-      this.downloadCancel = null;
-      DOMElements.saveNotifBanner.style.display = 'none';
+      this.cleanupTaskState(Localize.getMessage('player_saveaudio_fail') || 'Failed to extract audio!', 'error', 2000);
     }
   }
 
