@@ -15,6 +15,44 @@ let Options = {};
 const OptionsCache = {};
 
 const AutoEnableList = [];
+let EnabledSites = new Set();
+let DisabledSites = new Set();
+
+async function loadSitePreferences() {
+  try {
+    const result = await chrome.storage.local.get({
+      enabledSites: [],
+      disabledSites: [],
+    });
+    EnabledSites = new Set(result.enabledSites || []);
+    DisabledSites = new Set(result.disabledSites || []);
+  } catch (e) {
+    console.error('Failed to load site preferences:', e);
+  }
+}
+
+async function saveSitePreferences() {
+  try {
+    await chrome.storage.local.set({
+      enabledSites: Array.from(EnabledSites),
+      disabledSites: Array.from(DisabledSites),
+    });
+  } catch (e) {
+    console.error('Failed to save site preferences:', e);
+  }
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local') {
+    if (changes.enabledSites) {
+      EnabledSites = new Set(changes.enabledSites.newValue || []);
+    }
+    if (changes.disabledSites) {
+      DisabledSites = new Set(changes.disabledSites.newValue || []);
+    }
+  }
+});
+
 const ExtensionVersion = chrome.runtime.getManifest().version;
 const Logging = false;
 const Tabs = new TabTracker();
@@ -75,6 +113,25 @@ async function onClicked(tabobj) {
   if (tab.url && !emptyTabURLS.includes(tab.url)) {
     if (!BackgroundUtils.isUrlPlayerUrl(tab.url)) {
       tab.isOn = !tab.isOn;
+
+      // Handle persistent site remembering
+      if (Options.kiwiRememberSites !== false) {
+        try {
+          const currentHostname = new URL(tab.url).hostname;
+          if (currentHostname) {
+            if (tab.isOn) {
+              EnabledSites.add(currentHostname);
+              DisabledSites.delete(currentHostname);
+            } else {
+              DisabledSites.add(currentHostname);
+              EnabledSites.delete(currentHostname);
+            }
+            saveSitePreferences();
+          }
+        } catch (e) {
+          console.error('Error recording site preference:', e);
+        }
+      }
 
       BackgroundUtils.updateTabIcon(tab);
       broadcastTabStatus(tab);
@@ -140,7 +197,11 @@ chrome.tabs.onUpdated.addListener((tabid, changeInfo, tabobj) => {
     frame0.url = changeInfo.url;
     checkYTURL(frame0);
 
-    const match = AutoEnableList.find((item) => {
+    const hostname = url.hostname;
+    const isExplicitlyDisabled = (Options.kiwiRememberSites !== false) && DisabledSites.has(hostname);
+    const isExplicitlyEnabled = (Options.kiwiRememberSites !== false) && EnabledSites.has(hostname);
+
+    const match = !isExplicitlyDisabled ? AutoEnableList.find((item) => {
       try {
         if (!item.regex) {
           const stripProto = (s) => (s || '').replace(/^(https?:)?\/\//, '');
@@ -156,21 +217,24 @@ chrome.tabs.onUpdated.addListener((tabid, changeInfo, tabobj) => {
 
       }
       return false;
-    });
+    }) : null;
 
-    const shouldAutoEnable = match && !match.negative;
-
+    const shouldAutoEnable = !isExplicitlyDisabled && (isExplicitlyEnabled || (match && !match.negative));
 
     if (BackgroundUtils.isUrlPlayerUrl(tab.url)) {
       tab.isOn = true;
       tab.regexMatched = true;
       broadcastTabStatus(tab);
-    } else if (shouldAutoEnable && !tab.regexMatched) {
+    } else if (shouldAutoEnable && !tab.isOn) {
       tab.regexMatched = true;
       tab.isOn = true;
       broadcastTabStatus(tab);
       openPlayersWithSources(tab);
     } else if (!shouldAutoEnable && tab.regexMatched) {
+      tab.isOn = false;
+      tab.regexMatched = false;
+      broadcastTabStatus(tab);
+    } else if (isExplicitlyDisabled && tab.isOn) {
       tab.isOn = false;
       tab.regexMatched = false;
       broadcastTabStatus(tab);
@@ -1419,6 +1483,7 @@ function deleteHeaderCache(details) {
 }
 
 loadOptions().catch(console.error);
+loadSitePreferences().catch(console.error);
 
 const streamSaverBackend = new StreamSaverBackend();
 try {

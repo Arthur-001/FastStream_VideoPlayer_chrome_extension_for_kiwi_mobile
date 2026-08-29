@@ -620,3 +620,33 @@ input.input-error-border {
 input.input-error-border:focus-visible {
   outline-color: #ff4a4a !important;
 }
+
+/* Hidden sections */
+#ratebox,
+section[data-search-section="keybinds"] {
+  display: none !important;
+}
+
+/* Video options accidental-touch lock */
+.video-options-locked {
+  opacity: 0.5;
+  pointer-events: none;
+  user-select: none;
+  filter: grayscale(0.6);
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.mobile-buttons-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.mobile-buttons-row button {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--radius-1);
+}
+

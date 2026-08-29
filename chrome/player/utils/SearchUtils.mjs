@@ -25,6 +25,9 @@ class Search {
   }
   buildSections() {
     return Array.from(document.querySelectorAll('[data-search-section]'), (section) => {
+      if (window.getComputedStyle(section).display === 'none') {
+        return null;
+      }
       const items = Array.from(section.querySelectorAll('.search-target-remove, .search-target-remove-keybind'));
       return {
         element: section,
@@ -32,7 +35,7 @@ class Search {
         items,
         total: items.filter((item) => isElementVisible(item)).length,
       };
-    });
+    }).filter(Boolean);
   }
 }
 

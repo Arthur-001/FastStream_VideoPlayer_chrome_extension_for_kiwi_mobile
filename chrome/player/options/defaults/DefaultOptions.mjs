@@ -67,4 +67,7 @@ export const DefaultOptions = {
   kiwiGuardOverlayNeutralize: true, // Make overlay ads non-interactive (pointer-events:none + opacity)
   kiwiGuardOverlayZIndex: true,    // Push overlays behind the player via z-index manipulation
   kiwiKeepScreenOn: true,          // Keep the device screen active even when the video is paused
+
+  // Persistent site states
+  kiwiRememberSites: true,         // Remember whether FastStream was enabled or disabled on websites
 };

@@ -67,6 +67,15 @@ const kiwiGuardOverlayZIndex = document.getElementById('kiwiguardoverlayzindex')
 const kiwiGuardSubOptions = document.getElementById('kiwi-guard-sub-options');
 const kiwiKeepScreenOn = document.getElementById('kiwakeepscreenon');
 const resetMobileOptions = document.getElementById('resetmobileoptions');
+const kiwiRememberSites = document.getElementById('kiwiremembersites');
+const resetRememberedSites = document.getElementById('resetrememberedsites');
+const resetDismissedErrors = document.getElementById('resetdismissederrors');
+
+// Video Options UI Safety Lock & Reset
+const videoFiltersUnlock = document.getElementById('videofiltersunlock');
+const videoOptionsContainer = document.getElementById('video-options-container');
+const resetVideoFilters = document.getElementById('resetvideofilters');
+
 // Flow Drag Seek controls
 const dragSeekSensitivity = document.getElementById('dragseeksensitivity');
 const dragActivationHoldMs = document.getElementById('dragactivationholdms');
@@ -142,6 +151,9 @@ async function loadOptions(newOptions) {
   kiwiGuardOverlayNeutralize.checked = Options.kiwiGuardOverlayNeutralize !== false;
   kiwiGuardOverlayZIndex.checked = Options.kiwiGuardOverlayZIndex !== false;
   kiwiKeepScreenOn.checked = Options.kiwiKeepScreenOn !== false;
+  if (kiwiRememberSites) {
+    kiwiRememberSites.checked = Options.kiwiRememberSites !== false;
+  }
   updateKiwiGuardSubOptions();
   // Flow Drag Seek
   dragSeekSensitivity.value = Options.dragSeekSensitivity ?? 0.3;
@@ -150,6 +162,8 @@ async function loadOptions(newOptions) {
   clearInputError(dragActivationHoldMs);
   dragSeekTransitionMs.value = Options.dragSeekTransitionMs ?? 150;
   clearInputError(dragSeekTransitionMs);
+
+  updateVideoOptionsLockState();
 
   setSelectMenuValue(daltonizerType, Options.videoDaltonizerType);
   setSelectMenuValue(clickAction, Options.singleClickAction);
@@ -689,6 +703,78 @@ dragSeekTransitionMs.addEventListener('input', () => handleMobileInputEvent(drag
 dragSeekTransitionMs.addEventListener('change', () => handleMobileInputEvent(dragSeekTransitionMs, 'dragSeekTransitionMs', 0, 300, 'Drag Seek Transition', 'ms', true));
 dragSeekTransitionMs.addEventListener('blur', () => handleMobileInputEvent(dragSeekTransitionMs, 'dragSeekTransitionMs', 0, 300, 'Drag Seek Transition', 'ms', true));
 
+function updateVideoOptionsLockState() {
+  const isUnlocked = videoFiltersUnlock ? videoFiltersUnlock.checked : false;
+  if (videoOptionsContainer) {
+    if (isUnlocked) {
+      videoOptionsContainer.classList.remove('video-options-locked');
+    } else {
+      videoOptionsContainer.classList.add('video-options-locked');
+    }
+  }
+  document.querySelectorAll('.video-option input, .video-option select, #daltonizerType select').forEach((el) => {
+    el.disabled = !isUnlocked;
+  });
+}
+
+if (videoFiltersUnlock) {
+  videoFiltersUnlock.addEventListener('change', () => {
+    updateVideoOptionsLockState();
+  });
+}
+
+if (resetVideoFilters) {
+  resetVideoFilters.addEventListener('click', () => {
+    const videoFilterDefaults = {
+      videoZoom: 1,
+      videoDelay: 0,
+      videoBrightness: 1,
+      videoContrast: 1,
+      videoSaturation: 1,
+      videoGrayscale: 0,
+      videoSepia: 0,
+      videoInvert: 0,
+      videoHueRotate: 0,
+      videoDaltonizerType: DaltonizerTypes.NONE,
+      videoDaltonizerStrength: 1,
+    };
+    Object.assign(Options, videoFilterDefaults);
+    loadOptions(Options);
+    optionChanged();
+  });
+}
+
+if (kiwiRememberSites) {
+  kiwiRememberSites.addEventListener('change', () => {
+    Options.kiwiRememberSites = kiwiRememberSites.checked;
+    optionChanged();
+  });
+}
+
+if (resetRememberedSites) {
+  resetRememberedSites.addEventListener('click', async () => {
+    if (EnvUtils.isExtension() && chrome?.storage?.local) {
+      await chrome.storage.local.remove(['enabledSites', 'disabledSites']);
+    }
+    localStorage.removeItem('enabledSites');
+    localStorage.removeItem('disabledSites');
+    const {AlertPolyfill} = await import('../utils/AlertPolyfill.mjs');
+    AlertPolyfill.toast('success', 'Remembered site preferences have been reset');
+  });
+}
+
+if (resetDismissedErrors) {
+  resetDismissedErrors.addEventListener('click', async () => {
+    if (EnvUtils.isExtension() && chrome?.storage?.local) {
+      await chrome.storage.local.remove(['suppressedErrors']);
+    }
+    localStorage.removeItem('suppressedErrors');
+    localStorage.removeItem('ytSlowdownWarningDismissed');
+    const {AlertPolyfill} = await import('../utils/AlertPolyfill.mjs');
+    AlertPolyfill.toast('success', 'Dismissed error alerts have been reset');
+  });
+}
+
 resetMobileOptions.addEventListener('click', () => {
   const mobileDefaults = {
     tapSeekSeconds: 10,
@@ -704,6 +790,7 @@ resetMobileOptions.addEventListener('click', () => {
     dragSeekSensitivity: 0.3,
     dragActivationHoldMs: 150,
     dragSeekTransitionMs: 150,
+    kiwiRememberSites: true,
   };
   Object.assign(Options, mobileDefaults);
   loadOptions(Options);
@@ -890,11 +977,11 @@ if (EnvUtils.isExtension()) {
 
   // Don't ask for rating for manual installs
   // SPLICER:NO_PROMO:REMOVE_START
-  chrome.storage.local.get('rateus', (result) => {
-    if (!result || !result.rateus) {
-      ratebox.style.display = 'block';
-    }
-  });
+  // chrome.storage.local.get('rateus', (result) => {
+  //   if (!result || !result.rateus) {
+  //     ratebox.style.display = 'block';
+  //   }
+  // });
   // SPLICER:NO_PROMO:REMOVE_END
 
   // SPLICER:NO_UPDATE_CHECKER:REMOVE_START
