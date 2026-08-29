@@ -390,6 +390,10 @@ export class InterfaceController {
       this.focusingControls = false;
       this.queueControlsHide();
     });
+    DOMElements.controlsContainer.addEventListener('touchend', ()=>{
+      this.mouseOverControls = false;
+      this.queueControlsHide();
+    }, {passive: true});
 
     DOMElements.playerContainer.addEventListener('mouseleave', (e)=>{
       this.queueControlsHide(1);
@@ -779,6 +783,11 @@ export class InterfaceController {
           // Double-tap center: exit fullscreen mode
           this.fullscreenToggle(false);
         }
+      } else if (count === 1) {
+        // Single-tap left or right: show controls and auto-hide after default timeout
+        this.mouseOverControls = false;
+        this.focusingControls = false;
+        this.showControlBarTemporarily(opts.kiwiControlsHideTimeout ?? 2000);
       } else if (count >= 2) {
         // Double-tap or more: seek
         const seekUnits = count - 1;
@@ -792,6 +801,8 @@ export class InterfaceController {
         triggerSeekOverlay(zone, seekSeconds);
 
         // Show controls briefly then re-hide after seek
+        this.mouseOverControls = false;
+        this.focusingControls = false;
         this.showControlBarTemporarily(opts.kiwiControlsHideTimeout ?? 2000);
       }
     };
@@ -885,6 +896,10 @@ export class InterfaceController {
       isDragging = false;
       dragTouchId = null;
       hideDragOverlay();
+      this.mouseOverControls = false;
+      this.focusingControls = false;
+      const opts = this.client.options;
+      this.showControlBarTemporarily(opts.kiwiControlsHideTimeout ?? 2000);
     };
 
     // Commit drag: seek is already applied live; just resume and clean up
@@ -893,6 +908,8 @@ export class InterfaceController {
       if (dragWasPlaying) {
         this.client.play();
       }
+      this.mouseOverControls = false;
+      this.focusingControls = false;
       const opts = this.client.options;
       // Hide controls after the configured timeout (not immediately)
       this.showControlBarTemporarily(opts.kiwiControlsHideTimeout ?? 2000);

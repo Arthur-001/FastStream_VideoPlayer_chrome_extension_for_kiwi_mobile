@@ -625,6 +625,13 @@ export class ProgressBar extends EventEmitter {
       if (shouldPlay) {
         this.client.player?.play();
       }
+
+      if (this.client?.interfaceController) {
+        this.client.interfaceController.mouseOverControls = false;
+        this.client.interfaceController.focusingControls = false;
+        const opts = this.client.options;
+        this.client.interfaceController.showControlBarTemporarily(opts?.kiwiControlsHideTimeout ?? 2000);
+      }
     };
     shiftTime(initialPosition);
     DOMElements.playerContainer.addEventListener('mouseup', onProgressbarMouseUp);
