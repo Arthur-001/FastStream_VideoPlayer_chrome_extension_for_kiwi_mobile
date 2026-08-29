@@ -122,13 +122,13 @@ async function loadOptions(newOptions) {
   analyzeVideos.checked = !!Options.analyzeVideos;
   playStreamURLs.checked = !!Options.playStreamURLs;
   playMP4URLs.checked = !!Options.playMP4URLs;
-  previewEnabled.checked = !!Options.previewEnabled;
+  if (previewEnabled) previewEnabled.checked = !!Options.previewEnabled;
   autoSub.checked = !!Options.autoEnableBestSubtitles;
   autoplayYoutube.checked = !!Options.autoplayYoutube;
   autoplayNext.checked = !!Options.autoplayNext;
   maxSpeed.value = StringUtils.getSpeedString(Options.maxSpeed, true);
   maxSize.value = StringUtils.getSizeString(Options.maxVideoSize);
-  seekStepSize.value = Math.round(Options.seekStepSize * 100) / 100;
+  if (seekStepSize) seekStepSize.value = Math.round(Options.seekStepSize * 100) / 100;
   customSourcePatterns.value = Options.customSourcePatterns || '';
   miniSize.value = Options.miniSize;
   storeProgress.checked = !!Options.storeProgress;
@@ -166,9 +166,9 @@ async function loadOptions(newOptions) {
   updateVideoOptionsLockState();
 
   setSelectMenuValue(daltonizerType, Options.videoDaltonizerType);
-  setSelectMenuValue(clickAction, Options.singleClickAction);
-  setSelectMenuValue(dblclickAction, Options.doubleClickAction);
-  setSelectMenuValue(tplclickAction, Options.tripleClickAction);
+  if (clickAction) setSelectMenuValue(clickAction, Options.singleClickAction);
+  if (dblclickAction) setSelectMenuValue(dblclickAction, Options.doubleClickAction);
+  if (tplclickAction) setSelectMenuValue(tplclickAction, Options.tripleClickAction);
   setSelectMenuValue(visChangeAction, Options.visChangeAction);
   setSelectMenuValue(colorTheme, Options.colorTheme);
   setSelectMenuValue(miniPos, Options.miniPos);
@@ -251,20 +251,26 @@ createSelectMenu(daltonizerType, Object.values(DaltonizerTypes), Options.videoDa
   optionChanged();
 });
 
-createSelectMenu(clickAction, Object.values(ClickActions), Options.singleClickAction, 'options_general_clickaction', (e) => {
-  Options.singleClickAction = e.target.value;
-  optionChanged();
-});
+if (clickAction) {
+  createSelectMenu(clickAction, Object.values(ClickActions), Options.singleClickAction, 'options_general_clickaction', (e) => {
+    Options.singleClickAction = e.target.value;
+    optionChanged();
+  });
+}
 
-createSelectMenu(dblclickAction, Object.values(ClickActions), Options.doubleClickAction, 'options_general_clickaction', (e) => {
-  Options.doubleClickAction = e.target.value;
-  optionChanged();
-});
+if (dblclickAction) {
+  createSelectMenu(dblclickAction, Object.values(ClickActions), Options.doubleClickAction, 'options_general_clickaction', (e) => {
+    Options.doubleClickAction = e.target.value;
+    optionChanged();
+  });
+}
 
-createSelectMenu(tplclickAction, Object.values(ClickActions), Options.tripleClickAction, 'options_general_clickaction', (e) => {
-  Options.tripleClickAction = e.target.value;
-  optionChanged();
-});
+if (tplclickAction) {
+  createSelectMenu(tplclickAction, Object.values(ClickActions), Options.tripleClickAction, 'options_general_clickaction', (e) => {
+    Options.tripleClickAction = e.target.value;
+    optionChanged();
+  });
+}
 
 createSelectMenu(visChangeAction, Object.values(VisChangeActions), Options.visChangeAction, 'options_general_vischangeaction', (e) => {
   Options.visChangeAction = e.target.value;
@@ -435,10 +441,12 @@ downloadAll.addEventListener('change', () => {
   optionChanged();
 });
 
-previewEnabled.addEventListener('change', () => {
-  Options.previewEnabled = previewEnabled.checked;
-  optionChanged();
-});
+if (previewEnabled) {
+  previewEnabled.addEventListener('change', () => {
+    Options.previewEnabled = previewEnabled.checked;
+    optionChanged();
+  });
+}
 
 storeProgress.addEventListener('change', () => {
   Options.storeProgress = storeProgress.checked;
@@ -475,10 +483,12 @@ maxSize.addEventListener('change', () => {
   optionChanged();
 });
 
-seekStepSize.addEventListener('change', () => {
-  Options.seekStepSize = parseFloat(seekStepSize.value);
-  optionChanged();
-});
+if (seekStepSize) {
+  seekStepSize.addEventListener('change', () => {
+    Options.seekStepSize = parseFloat(seekStepSize.value);
+    optionChanged();
+  });
+}
 
 replaceDelay.addEventListener('change', () => {
   Options.replaceDelay = parseInt(replaceDelay.value);

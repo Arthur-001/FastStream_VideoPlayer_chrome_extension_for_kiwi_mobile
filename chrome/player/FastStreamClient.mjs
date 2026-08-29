@@ -82,7 +82,7 @@ export class FastStreamClient extends EventEmitter {
       videoDaltonizerStrength: 1,
       videoZoom: 1,
       seekStepSize: 0.2,
-      defaultQuality: 'Auto',
+      defaultQuality: '1080p',
       toolSettings: Utils.mergeOptions(DefaultToolSettings, {}),
       videoDelay: 0,
       videoFlip: 0,

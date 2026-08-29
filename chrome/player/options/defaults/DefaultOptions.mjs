@@ -20,7 +20,7 @@ export const DefaultOptions = {
   autoplayYoutube: EnvUtils.isExtension(),
   autoplayNext: false,
   defaultYoutubeClient: YoutubeClients.WEB,
-  defaultQuality: `Auto`,
+  defaultQuality: `1080p`,
   colorTheme: ColorThemes.DEFAULT,
   autoEnableURLs: [],
   customSourcePatterns: ``,
