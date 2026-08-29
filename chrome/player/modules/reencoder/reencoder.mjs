@@ -96,17 +96,19 @@ export class Reencoder extends EventEmitter {
     }
   }
 
-  async setup(videoMimeType, videoDuration, videoInitSegment, audioMimeType, audioDuration, audioInitSegment, transcodeOptions = {}) {
+  async setup(videoMimeType, videoDuration, videoInitSegment, audioMimeType, audioDuration, audioInitSegment, transcodeOptions = {}, isPreinitialized = false) {
     if (!videoDuration && !audioDuration) {
       throw new Error('no video or audio');
     }
 
     let videoOutput;
     let audioOutput;
-    if (videoDuration) {
+    if (videoDuration && !isPreinitialized) {
       this.videoDuration = videoDuration;
       this.videoDemuxer = videoMimeType.includes('webm') ? new WebMDemuxer() : new MP4Demuxer();
-      this.videoDemuxer.initialize(videoInitSegment);
+      if (videoInitSegment) {
+        this.videoDemuxer.initialize(videoInitSegment);
+      }
     }
 
     const requeue = (e) => {
@@ -245,14 +247,16 @@ export class Reencoder extends EventEmitter {
     }
 
     const videoHasAudio = this.videoDemuxer && this.videoDemuxer.getAudioDecoderConfig();
-    if (audioDuration) {
+    if (audioDuration && !isPreinitialized) {
       if (videoHasAudio) {
         throw new Error('Video already has audio');
       }
 
       this.audioDuration = audioDuration;
-      this.audioDemuxer = audioMimeType.includes('webm') ? new WebMDemuxer() : new MP4Demuxer();
-      this.audioDemuxer.initialize(audioInitSegment);
+      this.audioDemuxer = (audioMimeType && audioMimeType.includes('webm')) ? new WebMDemuxer() : new MP4Demuxer();
+      if (audioInitSegment) {
+        this.audioDemuxer.initialize(audioInitSegment);
+      }
     }
 
     if (videoHasAudio || (this.audioDemuxer && this.audioDemuxer.getAudioDecoderConfig())) {
@@ -431,24 +435,26 @@ export class Reencoder extends EventEmitter {
     });
   }
 
-  async finalize() {
+  async finalize(skipDemuxerFlush = false) {
     if (this.audioDecoder) {
-      // Process last packet
-      const left = this.audioDemuxer.getAudioChunks(this.audioDuration);
-      left.forEach((chunk) => {
-        this.audioDecoder.decode(chunk);
-      });
+      if (this.audioDemuxer && !skipDemuxerFlush) {
+        const left = this.audioDemuxer.getAudioChunks(this.audioDuration);
+        left.forEach((chunk) => {
+          this.audioDecoder.decode(chunk);
+        });
+      }
 
       await this.audioDecoder.flush();
       await this.audioEncoder.flush();
     }
 
     if (this.videoDecoder) {
-      // Process last packet
-      const left = this.videoDemuxer.getVideoChunks(this.videoDuration);
-      left.forEach((chunk) => {
-        this.videoDecoder.decode(chunk);
-      });
+      if (this.videoDemuxer && !skipDemuxerFlush) {
+        const left = this.videoDemuxer.getVideoChunks(this.videoDuration);
+        left.forEach((chunk) => {
+          this.videoDecoder.decode(chunk);
+        });
+      }
 
       await this.videoDecoder.flush();
       await this.videoEncoder.flush();
@@ -479,6 +485,87 @@ export class Reencoder extends EventEmitter {
     return new Blob(dataChunks, {
       type: 'video/mp4',
     });
+  }
+
+  async convertMP4Blob(mp4Blob, transcodeOptions = {}, onProgress = null) {
+    if (!window.VideoDecoder || !window.VideoEncoder) {
+      throw new Error('WebCodecs not supported');
+    }
+
+    const arrayBuffer = await BlobManager.getDataFromBlob(mp4Blob, 'arraybuffer');
+    if (this.cancelled) throw new Error('Cancelled');
+
+    this.videoDemuxer = new MP4Demuxer();
+    this.videoDemuxer.initialize(arrayBuffer);
+
+    const decoderConfig = this.videoDemuxer.getVideoDecoderConfig();
+    if (!decoderConfig) {
+      return mp4Blob;
+    }
+
+    const duration = (this.videoDemuxer.info?.duration && this.videoDemuxer.info?.timescale) ?
+      (this.videoDemuxer.info.duration / this.videoDemuxer.info.timescale) : 0;
+    this.videoDuration = duration;
+
+    await this.setup('video/mp4', duration, null, null, 0, null, transcodeOptions, true);
+
+    const videoChunks = this.videoDemuxer.getVideoChunks(duration);
+    const audioChunks = this.audioDecoder ? this.videoDemuxer.getAudioChunks(duration) : [];
+
+    const totalChunks = (videoChunks.length + audioChunks.length) || 1;
+    let processed = 0;
+
+    for (let i = 0; i < videoChunks.length; i++) {
+      if (this.cancelled) {
+        this.destroy();
+        this.blobManager.close();
+        throw new Error('Cancelled');
+      }
+
+      this.videoDecoder.decode(videoChunks[i]);
+      processed++;
+
+      if (i % 25 === 0) {
+        const waitEncodePromise = new Promise((resolve) => {
+          this.resolveRecodePromise = resolve;
+        });
+        if (this.videoDecoder.decodeQueueSize >= 10 || this.videoEncoder.encodeQueueSize >= 10) {
+          await waitEncodePromise;
+        }
+        const prog = processed / totalChunks;
+        this.emit('progress', prog);
+        if (onProgress) onProgress(prog);
+      }
+    }
+
+    if (this.audioDecoder && audioChunks.length > 0) {
+      for (let i = 0; i < audioChunks.length; i++) {
+        if (this.cancelled) {
+          this.destroy();
+          this.blobManager.close();
+          throw new Error('Cancelled');
+        }
+
+        this.audioDecoder.decode(audioChunks[i]);
+        processed++;
+
+        if (i % 25 === 0) {
+          const waitEncodePromise = new Promise((resolve) => {
+            this.resolveRecodePromise = resolve;
+          });
+          if (this.audioDecoder.decodeQueueSize >= 10 || this.audioEncoder.encodeQueueSize >= 10) {
+            await waitEncodePromise;
+          }
+          const prog = processed / totalChunks;
+          this.emit('progress', prog);
+          if (onProgress) onProgress(prog);
+        }
+      }
+    }
+
+    const blob = await this.finalize(true);
+    this.destroy();
+    return blob;
   }
 
   async convert(videoMimeType, videoDuration, videoInitSegment, audioMimeType, audioDuration, audioInitSegment, zippedFragments, transcodeOptions = {}, skipConfirm = false) {

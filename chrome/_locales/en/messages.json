@@ -536,6 +536,12 @@
     "player_download_quality_source": {
         "message": "Original (Source)"
     },
+    "player_download_quality_2160p": {
+        "message": "4K (2160p)"
+    },
+    "player_download_quality_1440p": {
+        "message": "2K (1440p)"
+    },
     "player_download_quality_1080p": {
         "message": "1080p (Full HD)"
     },

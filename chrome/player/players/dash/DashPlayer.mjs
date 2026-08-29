@@ -445,31 +445,6 @@ export default class DashPlayer extends EventEmitter {
     const audioMimeType = audioProcessor ? audioProcessor.getRepresentation().mimeType : 'audio/mp4';
 
     try {
-      if (options.transcodeOptions) {
-        const {Reencoder} = await import('../../modules/reencoder/reencoder.mjs');
-        const reencoder = new Reencoder(options.registerCancel);
-        reencoder.on('progress', (progress) => {
-          if (options?.onProgress) {
-            options.onProgress(progress);
-          }
-        });
-        const blob = await reencoder.convert(
-            videoMimeType,
-            videoDuration,
-            videoInitSegmentData,
-            audioMimeType,
-            audioDuration,
-            audioInitSegmentData,
-            zippedFragments,
-            options.transcodeOptions,
-            true,
-        );
-        return {
-          extension: 'mp4',
-          blob: blob,
-        };
-      }
-
       const {DASH2MP4} = await import('../../modules/dash2mp4/dash2mp4.mjs');
 
       const dash2mp4 = new DASH2MP4(options.registerCancel);

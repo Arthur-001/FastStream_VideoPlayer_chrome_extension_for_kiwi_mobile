@@ -787,71 +787,11 @@ export default class MP4Player extends EventEmitter {
       });
     }
 
+    const filestream = options.filestream;
+    const writer = filestream ? filestream.getWriter() : null;
+    const blobChunks = [];
+
     try {
-      if (options.transcodeOptions) {
-        // Collect fragments
-        const wrappedFragments = [];
-        for (let i = 0; i < lastFrag; i++) {
-          if (cancelled) throw new Error('Cancelled');
-          const frag = frags[i];
-          if (!options.partialSave && frag.status !== DownloadStatus.DOWNLOAD_COMPLETE) {
-            while (true) {
-              try {
-                await this.downloadFragment(frag, -1);
-                break;
-              } catch (e) {
-                if (e.message !== 'Aborted download') throw e;
-              }
-            }
-          }
-          frag.removeReference(ReferenceTypes.SAVER);
-
-          if (frag.status === DownloadStatus.DOWNLOAD_COMPLETE) {
-            wrappedFragments.push({
-              track: 0,
-              fragment: frag,
-              getEntry: async () => this.client.downloadManager.getEntry(frag.getContext()),
-            });
-          }
-
-          if (options.onProgress) {
-            options.onProgress((i / lastFrag) * 0.3);
-          }
-        }
-
-        const {Reencoder} = await import('../../modules/reencoder/reencoder.mjs');
-        const reencoder = new Reencoder(options.registerCancel);
-        reencoder.on('progress', (progress) => {
-          if (options?.onProgress) {
-            options.onProgress(0.3 + progress * 0.7);
-          }
-        });
-
-        const initFrag = wrappedFragments[0];
-        const initEntry = initFrag ? await initFrag.getEntry() : null;
-        const initData = initEntry ? new Uint8Array(await initEntry.getDataFromBlob()) : new Uint8Array(0);
-
-        const blob = await reencoder.convert(
-            'video/mp4',
-            this.duration || 0,
-            initData.buffer,
-            'audio/mp4',
-            this.duration || 0,
-            initData.buffer,
-            wrappedFragments,
-            options.transcodeOptions,
-            true,
-        );
-
-        return {
-          extension: 'mp4',
-          blob: blob,
-        };
-      }
-
-      const filestream = options.filestream;
-      const writer = filestream.getWriter();
-
       for (let i = 0; i < lastFrag; i++) {
         if (cancelled) {
           throw new Error('Cancelled');
@@ -872,9 +812,18 @@ export default class MP4Player extends EventEmitter {
         }
         if (frag.status === DownloadStatus.DOWNLOAD_COMPLETE) {
           const entry = this.client.downloadManager.getEntry(frag.getContext());
-          await writer.write(new Uint8Array(await entry.getDataFromBlob()));
+          const chunkData = new Uint8Array(await entry.getDataFromBlob());
+          if (writer) {
+            await writer.write(chunkData);
+          } else {
+            blobChunks.push(chunkData);
+          }
         } else {
-          await writer.write(emptyTemplate);
+          if (writer) {
+            await writer.write(emptyTemplate);
+          } else {
+            blobChunks.push(emptyTemplate);
+          }
         }
 
         if (options.onProgress) {
@@ -882,20 +831,21 @@ export default class MP4Player extends EventEmitter {
         }
       }
 
-      writer.close();
+      if (writer) {
+        writer.close();
+      }
 
       return {
         extension: 'mp4',
-        blob: null,
+        blob: writer ? null : new Blob(blobChunks, {type: 'video/mp4'}),
       };
     } catch (e) {
       for (let i = 0; i < lastFrag; i++) {
         const frag = frags[i];
         frag.removeReference(ReferenceTypes.SAVER);
       }
-      if (options.filestream) {
+      if (writer) {
         try {
-          const writer = options.filestream.getWriter();
           writer.abort();
         } catch (err) {}
       }

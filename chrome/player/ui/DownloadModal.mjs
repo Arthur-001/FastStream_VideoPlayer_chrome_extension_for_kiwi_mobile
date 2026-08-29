@@ -20,14 +20,36 @@ export class DownloadModal {
       const existing = document.getElementById('kiwi-download-modal');
       if (existing) existing.remove();
 
-      const sourceHeight = videoHeight || 1080;
-      const sourceWidth = videoWidth || 1920;
-
       // Extract available stream levels
       const levelsArray = Array.from(videoLevels?.values() || []);
+      const currentLevelId = client?.getCurrentVideoLevelID?.();
+      const currentLevel = levelsArray.find((l) => l.id === currentLevelId);
+
+      let sourceHeight = videoHeight;
+      let sourceWidth = videoWidth;
+
+      if (currentLevel && currentLevel.height > 0) {
+        sourceHeight = currentLevel.height;
+        sourceWidth = currentLevel.width;
+      }
+
+      if (!sourceHeight || sourceHeight <= 0) {
+        const videoEl = client?.player?.getVideo?.();
+        if (videoEl?.videoHeight > 0) {
+          sourceHeight = videoEl.videoHeight;
+          sourceWidth = videoEl.videoWidth;
+        }
+      }
+
+      if (!sourceHeight) {
+        sourceHeight = 1080;
+        sourceWidth = 1920;
+      }
 
       // Build resolution tiers <= sourceHeight
       const tierPresets = [
+        {height: 2160, name: '4K (2160p)', key: 'player_download_quality_2160p'},
+        {height: 1440, name: '2K (1440p)', key: 'player_download_quality_1440p'},
         {height: 1080, name: '1080p (Full HD)', key: 'player_download_quality_1080p'},
         {height: 720, name: '720p (HD)', key: 'player_download_quality_720p'},
         {height: 480, name: '480p (SD)', key: 'player_download_quality_480p'},
@@ -37,14 +59,13 @@ export class DownloadModal {
       const resolutionOptions = [];
 
       // 1. Source (Original) option
-      const sourceLevel = levelsArray.find((l) => l.id === client?.getCurrentVideoLevelID?.()) || levelsArray[0];
       resolutionOptions.push({
         id: 'source',
         label: `${Localize.getMessage('player_download_quality_source') || 'Source'} (${sourceHeight}p)`,
         height: sourceHeight,
         width: sourceWidth,
         isDirect: true,
-        levelId: sourceLevel?.id || null,
+        levelId: currentLevel?.id || null,
       });
 
       // 2. Downsampling options strictly smaller than sourceHeight

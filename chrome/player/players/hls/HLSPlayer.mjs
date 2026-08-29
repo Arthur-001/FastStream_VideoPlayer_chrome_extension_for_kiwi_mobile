@@ -165,30 +165,7 @@ export default class HLSPlayer extends EventEmitter {
     }
 
     try {
-      if (options.transcodeOptions) {
-        const {Reencoder} = await import('../../modules/reencoder/reencoder.mjs');
-        const reencoder = new Reencoder(options.registerCancel);
-        reencoder.on('progress', (progress) => {
-          if (options?.onProgress) {
-            options.onProgress(progress);
-          }
-        });
-        const blob = await reencoder.convert(
-            'video/mp4',
-            level?.details?.totalduration || 0,
-            levelInitData ? levelInitData.buffer : null,
-            'audio/mp4',
-            audioLevel?.details?.totalduration || 0,
-            audioLevelInitData ? audioLevelInitData.buffer : null,
-            zippedFragments,
-            options.transcodeOptions,
-            true,
-        );
-        return {
-          extension: 'mp4',
-          blob: blob,
-        };
-      } else if (levelInitData && audioLevelInitData) {
+      if (levelInitData && audioLevelInitData) {
         const {MP4Merger} = await import('../../modules/dash2mp4/mp4merger.mjs');
 
         const mp4merger = new MP4Merger(options.registerCancel);

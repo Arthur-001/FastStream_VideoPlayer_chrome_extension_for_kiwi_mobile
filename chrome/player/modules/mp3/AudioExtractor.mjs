@@ -44,7 +44,7 @@ export class AudioExtractor extends EventEmitter {
 
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     try {
-      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
       if (this.cancelled) throw new Error('Cancelled');
 
       const sampleRate = audioBuffer.sampleRate;
@@ -58,7 +58,7 @@ export class AudioExtractor extends EventEmitter {
       const leftChannel = audioBuffer.getChannelData(0);
       const rightChannel = numChannels > 1 ? audioBuffer.getChannelData(1) : leftChannel;
 
-      const chunkSize = 4096 * 4;
+      const chunkSize = 1152 * 8;
       const totalSamples = leftChannel.length;
 
       for (let i = 0; i < totalSamples; i += chunkSize) {

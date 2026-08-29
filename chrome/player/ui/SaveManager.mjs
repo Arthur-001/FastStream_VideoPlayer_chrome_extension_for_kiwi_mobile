@@ -129,9 +129,27 @@ export class SaveManager {
       return;
     }
 
-    const videoWidth = this.client.videoWidth || player.getVideo()?.videoWidth || 1920;
-    const videoHeight = this.client.videoHeight || player.getVideo()?.videoHeight || 1080;
     const videoLevels = this.client.getVideoLevels() || new Map();
+    const levelsArray = Array.from(videoLevels.values());
+    const currentLevelId = this.client.getCurrentVideoLevelID?.();
+    const currentLevel = levelsArray.find((l) => l.id === currentLevelId);
+
+    let videoWidth = 0;
+    let videoHeight = 0;
+
+    if (currentLevel && currentLevel.height > 0) {
+      videoHeight = currentLevel.height;
+      videoWidth = currentLevel.width;
+    } else {
+      const videoEl = player?.getVideo?.();
+      if (videoEl?.videoHeight > 0) {
+        videoHeight = videoEl.videoHeight;
+        videoWidth = videoEl.videoWidth;
+      } else {
+        videoWidth = this.client.videoWidth || 1920;
+        videoHeight = this.client.videoHeight || 1080;
+      }
+    }
 
     const dlConfig = await DownloadModal.show({
       client: this.client,
@@ -161,7 +179,8 @@ export class SaveManager {
 
     const saveOptions = {
       onProgress: (progress) => {
-        this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_progress', [Math.floor(progress * 100)]), 'info');
+        const pct = Math.floor(progress * (dlConfig.isDownsample ? 40 : 100));
+        this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_progress', [pct]), 'info');
       },
       registerCancel: (cancel) => {
         this.downloadCancel = cancel;
@@ -170,12 +189,7 @@ export class SaveManager {
       partialSave: doPartial,
     };
 
-    if (dlConfig.isDownsample) {
-      saveOptions.transcodeOptions = {
-        targetHeight: dlConfig.targetHeight,
-        targetWidth: dlConfig.targetWidth,
-      };
-    } else if (dlConfig.isDirectTrack && dlConfig.targetLevelId) {
+    if (dlConfig.isDirectTrack && dlConfig.targetLevelId) {
       saveOptions.videoLevelID = dlConfig.targetLevelId;
     }
 
@@ -201,7 +215,6 @@ export class SaveManager {
         DOMElements.saveNotifBanner.style.display = 'none';
 
         if (e.message === 'Cancelled') {
-          console.error(e);
           this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_cancelled'), 'info', 2000);
         } else {
           if (await AlertPolyfill.confirm(Localize.getMessage('player_savevideo_failed_ask_archive'), 'error')) {
@@ -211,6 +224,43 @@ export class SaveManager {
           }
         }
         return;
+      }
+
+      if (dlConfig.isDownsample) {
+        if (!result?.blob) {
+          this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_fail'), 'error', 2000);
+          this.makingDownload = false;
+          this.downloadCancel = null;
+          DOMElements.saveNotifBanner.style.display = 'none';
+          return;
+        }
+
+        try {
+          const {Reencoder} = await import('../modules/reencoder/reencoder.mjs');
+          const reencoder = new Reencoder((cancel) => {
+            this.downloadCancel = cancel;
+          });
+          this.setStatusMessage('save-video', 'Downsampling video...', 'info');
+          const downscaledBlob = await reencoder.convertMP4Blob(
+            result.blob,
+            {
+              targetHeight: dlConfig.targetHeight,
+              targetWidth: dlConfig.targetWidth,
+            },
+            (p) => {
+              const pct = 40 + Math.floor(p * 60);
+              this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_progress', [pct]), 'info');
+            }
+          );
+          result = {blob: downscaledBlob, extension: 'mp4'};
+        } catch (e) {
+          console.error('Downsampling failed:', e);
+          this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_fail'), 'error', 2000);
+          this.makingDownload = false;
+          this.downloadCancel = null;
+          DOMElements.saveNotifBanner.style.display = 'none';
+          return;
+        }
       }
 
       DOMElements.saveNotifBanner.style.display = 'none';
@@ -253,100 +303,46 @@ export class SaveManager {
     DOMElements.saveNotifBanner.style.color = '';
 
     try {
+      let mediaBlob = null;
+      const saveResult = await player.saveVideo({
+        filestream: null,
+        partialSave: doPartial,
+        onProgress: (p) => {
+          this.setStatusMessage('save-video', `Downloading ${Math.floor(p * 40)}%`, 'info');
+        },
+        registerCancel: (cancel) => {
+          this.downloadCancel = cancel;
+        },
+      });
+
+      mediaBlob = saveResult?.blob;
+
+      if (!mediaBlob) {
+        const videoEl = player.getVideo?.();
+        const src = videoEl?.src || this.client.source?.url;
+        if (src) {
+          const buffer = await RequestUtils.httpGetLarge(src);
+          mediaBlob = new Blob([buffer]);
+        }
+      }
+
+      if (!mediaBlob) {
+        throw new Error('No media data available for audio extraction');
+      }
+
       const audioExtractor = new AudioExtractor((cancel) => {
         this.downloadCancel = cancel;
       });
 
-      const onProgress = (progress) => {
-        this.setStatusMessage('save-video', Localize.getMessage('player_saveaudio_progress', [Math.floor(progress * 100)]) || `Encoding MP3 ${Math.floor(progress * 100)}%`, 'info');
-      };
-
-      const audioLevelID = player.getCurrentAudioLevelID?.() || null;
-      const audioFragments = audioLevelID ? (this.client.getFragments(audioLevelID) || []) : [];
-      const videoFragments = player.getCurrentVideoLevelID?.() ? (this.client.getFragments(player.getCurrentVideoLevelID()) || []) : [];
-
-      let mp3Blob = null;
-
-      if (audioFragments.length > 0) {
-        let fragments = audioFragments;
-        if (doPartial) {
-          fragments = fragments.filter((f) => f && f.status === DownloadStatus.DOWNLOAD_COMPLETE);
+      this.setStatusMessage('save-video', 'Encoding MP3...', 'info');
+      const mp3Blob = await audioExtractor.extractFromBuffer(
+        mediaBlob,
+        dlConfig.bitrate || 192,
+        (p) => {
+          const pct = 40 + Math.floor(p * 60);
+          this.setStatusMessage('save-video', Localize.getMessage('player_saveaudio_progress', [pct]) || `Encoding MP3 ${pct}%`, 'info');
         }
-
-        const audioInitSegment = fragments[-1] ?
-          new Uint8Array(await this.client.downloadManager.getEntry(fragments[-1].getContext()).getDataFromBlob()) : null;
-
-        const wrappedFragments = fragments.filter((f) => f).map((frag) => {
-          return {
-            fragment: frag,
-            getEntry: async () => {
-              if (frag.status !== DownloadStatus.DOWNLOAD_COMPLETE) {
-                while (true) {
-                  try {
-                    await player.downloadFragment(frag, -1);
-                    break;
-                  } catch (e) {
-                    if (e.message !== 'Aborted download') throw e;
-                  }
-                }
-              }
-              return this.client.downloadManager.getEntry(frag.getContext());
-            },
-          };
-        });
-
-        mp3Blob = await audioExtractor.extractFromFragments({
-          audioMimeType: 'audio/mp4',
-          audioDuration: player.duration || 0,
-          audioInitSegment: audioInitSegment,
-          fragments: wrappedFragments,
-          kbps: dlConfig.bitrate || 192,
-          onProgress,
-        });
-      } else if (videoFragments.length > 0) {
-        let fragments = videoFragments;
-        if (doPartial) {
-          fragments = fragments.filter((f) => f && f.status === DownloadStatus.DOWNLOAD_COMPLETE);
-        }
-
-        const videoInitSegment = fragments[-1] ?
-          new Uint8Array(await this.client.downloadManager.getEntry(fragments[-1].getContext()).getDataFromBlob()) : null;
-
-        const wrappedFragments = fragments.filter((f) => f).map((frag) => {
-          return {
-            fragment: frag,
-            getEntry: async () => {
-              if (frag.status !== DownloadStatus.DOWNLOAD_COMPLETE) {
-                while (true) {
-                  try {
-                    await player.downloadFragment(frag, -1);
-                    break;
-                  } catch (e) {
-                    if (e.message !== 'Aborted download') throw e;
-                  }
-                }
-              }
-              return this.client.downloadManager.getEntry(frag.getContext());
-            },
-          };
-        });
-
-        mp3Blob = await audioExtractor.extractFromFragments({
-          audioMimeType: 'video/mp4',
-          audioDuration: player.duration || 0,
-          audioInitSegment: videoInitSegment,
-          fragments: wrappedFragments,
-          kbps: dlConfig.bitrate || 192,
-          onProgress,
-        });
-      } else {
-        const videoEl = player.getVideo?.();
-        const src = videoEl?.src || this.client.source?.url;
-        if (!src) throw new Error('No audio source found');
-
-        const buffer = await RequestUtils.httpGetLarge(src);
-        mp3Blob = await audioExtractor.extractFromBuffer(buffer, dlConfig.bitrate || 192, onProgress);
-      }
+      );
 
       DOMElements.saveNotifBanner.style.display = 'none';
       this.downloadCancel = null;
