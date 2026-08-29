@@ -164,12 +164,40 @@ export class Reencoder extends EventEmitter {
         else targetBitrate = 1500000;
       }
 
-      const encoderConfig = {
-        codec: 'avc1.4d003e',
-        width: targetWidth,
-        height: targetHeight,
-        bitrate: targetBitrate,
-      };
+      const candidateCodecs = [
+        'avc1.42e01f', // Constrained Baseline Profile (broadest mobile hardware support)
+        'avc1.4d001f', // Main Profile Level 3.1
+        'avc1.4d002a', // Main Profile Level 4.2
+        'avc1.4d003e', // Main Profile Level 6.2
+        'avc1.64001f', // High Profile Level 3.1
+        'avc1.640028', // High Profile Level 4.0
+      ];
+
+      let encoderConfig = null;
+      for (const candidate of candidateCodecs) {
+        const testConfig = {
+          codec: candidate,
+          width: targetWidth,
+          height: targetHeight,
+          bitrate: targetBitrate,
+        };
+        try {
+          const res = await VideoEncoder.isConfigSupported(testConfig);
+          if (res && res.supported) {
+            encoderConfig = testConfig;
+            break;
+          }
+        } catch (e) {}
+      }
+
+      if (!encoderConfig) {
+        encoderConfig = {
+          codec: 'avc1.42e01f',
+          width: targetWidth,
+          height: targetHeight,
+          bitrate: targetBitrate,
+        };
+      }
 
       console.log('Video decoder config: ', decoderConfig);
       console.log('Video encoder config (downsampled): ', encoderConfig);
@@ -180,15 +208,12 @@ export class Reencoder extends EventEmitter {
         height: targetHeight,
       };
 
-      const support = await VideoDecoder.isConfigSupported(decoderConfig);
-      if (!support) {
-        throw new Error('unsupported input video codec');
-      }
-
-      const support2 = await VideoEncoder.isConfigSupported(encoderConfig);
-      if (!support2) {
-        throw new Error('unsupported output video codec');
-      }
+      try {
+        const support = await VideoDecoder.isConfigSupported(decoderConfig);
+        if (support && !support.supported) {
+          console.warn('VideoDecoder report not supported for:', decoderConfig);
+        }
+      } catch (e) {}
 
       this.needsScale = (targetWidth !== sourceWidth || targetHeight !== sourceHeight);
       if (this.needsScale) {
@@ -200,12 +225,18 @@ export class Reencoder extends EventEmitter {
 
       this.videoEncoder = new VideoEncoder({
         output: (chunk, meta) => {
-          this.muxer.addVideoChunk(chunk, meta);
+          try {
+            this.muxer.addVideoChunk(chunk, meta);
+          } catch (err) {
+            console.error('Muxer addVideoChunk error:', err);
+            this.videoEncoderError = err;
+          }
           requeue();
         },
         error: (e) => {
-          console.error(e);
-          this.videoEncoder.close();
+          console.error('VideoEncoder error:', e);
+          this.videoEncoderError = e;
+          this.videoEncoder?.close();
         },
       });
       this.videoEncoder.configure(encoderConfig);
@@ -216,31 +247,37 @@ export class Reencoder extends EventEmitter {
           let encodeFrame = frame;
           let scaledFrame = null;
 
-          if (this.needsScale && this.offscreenCtx) {
-            this.offscreenCtx.drawImage(frame, 0, 0, targetWidth, targetHeight);
-            scaledFrame = new VideoFrame(this.offscreenCanvas, {
-              timestamp: timestamp,
-              duration: frame.duration || 0,
-            });
-            encodeFrame = scaledFrame;
-          }
+          try {
+            if (this.needsScale && this.offscreenCtx) {
+              this.offscreenCtx.drawImage(frame, 0, 0, targetWidth, targetHeight);
+              scaledFrame = new VideoFrame(this.offscreenCanvas, {
+                timestamp: timestamp,
+                duration: frame.duration || 0,
+              });
+              encodeFrame = scaledFrame;
+            }
 
-          if (timestamp - this.lastVideoKeyframe > KEYFRAME_INTERVAL) {
-            this.lastVideoKeyframe = timestamp;
-            this.videoEncoder.encode(encodeFrame, {keyFrame: true});
-          } else {
-            this.videoEncoder.encode(encodeFrame);
-          }
-
-          frame.close();
-          if (scaledFrame) {
-            scaledFrame.close();
+            if (timestamp - this.lastVideoKeyframe > KEYFRAME_INTERVAL) {
+              this.lastVideoKeyframe = timestamp;
+              this.videoEncoder.encode(encodeFrame, {keyFrame: true});
+            } else {
+              this.videoEncoder.encode(encodeFrame);
+            }
+          } catch (err) {
+            console.error('Frame scale/encode error:', err);
+            this.videoDecoderError = err;
+          } finally {
+            frame.close();
+            if (scaledFrame) {
+              scaledFrame.close();
+            }
           }
           requeue();
         },
         error: (e) => {
-          console.error(e);
-          this.videoDecoder.close();
+          console.error('VideoDecoder error:', e);
+          this.videoDecoderError = e;
+          this.videoDecoder?.close();
         },
       });
       this.videoDecoder.configure(decoderConfig);
@@ -262,109 +299,111 @@ export class Reencoder extends EventEmitter {
     if (videoHasAudio || (this.audioDemuxer && this.audioDemuxer.getAudioDecoderConfig())) {
       const decoderConfig = this.audioDemuxer ? this.audioDemuxer.getAudioDecoderConfig() : this.videoDemuxer.getAudioDecoderConfig();
 
-      const encoderConfig = {
-        codec: 'mp4a.40.2',
-        sampleRate: 44100,
-        numberOfChannels: decoderConfig.numberOfChannels,
-      };
-
-      console.log('Audio decoder config: ', decoderConfig);
-      console.log('Audio encoder config: ', encoderConfig);
-
-      audioOutput = {
-        codec: 'aac',
-        sampleRate: decoderConfig.sampleRate,
-        numberOfChannels: decoderConfig.numberOfChannels,
-      };
-
-      const support = await AudioDecoder.isConfigSupported(decoderConfig);
-      if (!support) {
-        throw new Error('unsupported input audio codec');
+      if (decoderConfig) {
+        audioOutput = {
+          codec: 'aac',
+          sampleRate: decoderConfig.sampleRate || 44100,
+          numberOfChannels: decoderConfig.numberOfChannels || 2,
+        };
       }
 
-      const support2 = await AudioEncoder.isConfigSupported(encoderConfig);
-      if (!support2) {
-        throw new Error('unsupported output video codec');
-      }
+      // If NOT preinitialized (e.g. WebM conversion), setup audio decoder/encoder/resampler
+      if (!isPreinitialized) {
+        const encoderConfig = {
+          codec: 'mp4a.40.2',
+          sampleRate: 44100,
+          numberOfChannels: decoderConfig.numberOfChannels,
+        };
 
-      this.lastAudioKeyframe = 0;
-      this.audioEncoder = new AudioEncoder({
-        output: (chunk, meta) => {
-          this.muxer.addAudioChunk(chunk, meta);
-          requeue();
-        },
-        error: (e) => {
-          console.error(e);
-          this.audioEncoder.close();
-        },
-      });
-      this.audioEncoder.configure(encoderConfig);
-
-      const currentScript = import.meta;
-      let basePath = '';
-      if (currentScript) {
-        basePath = currentScript.url
-            .replace(/#.*$/, '')
-            .replace(/\?.*$/, '')
-            .replace(/\/[^\/]+$/, '/');
-      }
-      this.resamplerWorker = new Worker(basePath + 'resampler-worker.mjs', {
-        type: 'module',
-      });
-
-      this.resamplerWorkerTasks = 0;
-      this.resamplerWorker.postMessage({
-        type: 'init',
-        oldSampleRate: decoderConfig.sampleRate,
-        newSampleRate: encoderConfig.sampleRate,
-        numChannels: decoderConfig.numberOfChannels,
-      });
-
-      this.resamplerWorker.addEventListener('message', (event) => {
-        const data = event.data;
-        if (data.type === 'resampled') {
-          this.resamplerWorkerTasks--;
-
-          const frame = data.data;
-          const timestamp = frame.timestamp; // frame.timestamp is in microseconds
-          if (timestamp - this.lastAudioKeyframe > KEYFRAME_INTERVAL) {
-            this.lastAudioKeyframe = timestamp;
-            this.audioEncoder.encode(frame, {keyFrame: true});
-          } else {
-            this.audioEncoder.encode(frame);
-          }
-
-          requeue();
-
-          if (this.resamplerWorkerTasks === 0 && this.resamplerWorkerPromiseResolve) {
-            this.resamplerWorkerPromiseResolve();
-            this.resamplerWorkerPromiseResolve = null;
-          }
+        const support = await AudioDecoder.isConfigSupported(decoderConfig);
+        if (!support) {
+          throw new Error('unsupported input audio codec');
         }
-      });
 
-      this.resamplerWorker.addEventListener('error', (e) => {
-        console.error(e);
-        this.resamplerWorker.terminate();
-        this.resamplerWorker = null;
-      });
+        const support2 = await AudioEncoder.isConfigSupported(encoderConfig);
+        if (!support2) {
+          throw new Error('unsupported output audio codec');
+        }
 
-      this.audioDecoder = new AudioDecoder({
-        output: (data) => {
-          this.resamplerWorkerTasks++;
-          this.resamplerWorker.postMessage({
-            type: 'pushSample',
-            data: data,
-          }, [data]);
+        this.lastAudioKeyframe = 0;
+        this.audioEncoder = new AudioEncoder({
+          output: (chunk, meta) => {
+            this.muxer.addAudioChunk(chunk, meta);
+            requeue();
+          },
+          error: (e) => {
+            console.error(e);
+            this.audioEncoder.close();
+          },
+        });
+        this.audioEncoder.configure(encoderConfig);
 
-          requeue();
-        },
-        error: (e) => {
+        const currentScript = import.meta;
+        let basePath = '';
+        if (currentScript) {
+          basePath = currentScript.url
+              .replace(/#.*$/, '')
+              .replace(/\?.*$/, '')
+              .replace(/\/[^\/]+$/, '/');
+        }
+        this.resamplerWorker = new Worker(basePath + 'resampler-worker.mjs', {
+          type: 'module',
+        });
+
+        this.resamplerWorkerTasks = 0;
+        this.resamplerWorker.postMessage({
+          type: 'init',
+          oldSampleRate: decoderConfig.sampleRate,
+          newSampleRate: encoderConfig.sampleRate,
+          numChannels: decoderConfig.numberOfChannels,
+        });
+
+        this.resamplerWorker.addEventListener('message', (event) => {
+          const data = event.data;
+          if (data.type === 'resampled') {
+            this.resamplerWorkerTasks--;
+
+            const frame = data.data;
+            const timestamp = frame.timestamp; // frame.timestamp is in microseconds
+            if (timestamp - this.lastAudioKeyframe > KEYFRAME_INTERVAL) {
+              this.lastAudioKeyframe = timestamp;
+              this.audioEncoder.encode(frame, {keyFrame: true});
+            } else {
+              this.audioEncoder.encode(frame);
+            }
+
+            requeue();
+
+            if (this.resamplerWorkerTasks === 0 && this.resamplerWorkerPromiseResolve) {
+              this.resamplerWorkerPromiseResolve();
+              this.resamplerWorkerPromiseResolve = null;
+            }
+          }
+        });
+
+        this.resamplerWorker.addEventListener('error', (e) => {
           console.error(e);
-          this.audioDecoder.close();
-        },
-      });
-      this.audioDecoder.configure(decoderConfig);
+          this.resamplerWorker.terminate();
+          this.resamplerWorker = null;
+        });
+
+        this.audioDecoder = new AudioDecoder({
+          output: (data) => {
+            this.resamplerWorkerTasks++;
+            this.resamplerWorker.postMessage({
+              type: 'pushSample',
+              data: data,
+            }, [data]);
+
+            requeue();
+          },
+          error: (e) => {
+            console.error(e);
+            this.audioDecoder.close();
+          },
+        });
+        this.audioDecoder.configure(decoderConfig);
+      }
     }
     this.chunks = [];
     // 16mb
@@ -510,9 +549,16 @@ export class Reencoder extends EventEmitter {
     await this.setup('video/mp4', duration, null, null, 0, null, transcodeOptions, true);
 
     const videoChunks = this.videoDemuxer.getVideoChunks(duration);
-    const audioChunks = this.audioDecoder ? this.videoDemuxer.getAudioChunks(duration) : [];
+    const audioChunks = this.videoDemuxer.getAudioChunks(duration);
+    console.log(`[Reencoder] Starting downsampling: ${videoChunks.length} video chunks, ${audioChunks.length} audio chunks, duration: ${duration}s`);
 
-    const totalChunks = (videoChunks.length + audioChunks.length) || 1;
+    if (audioChunks && audioChunks.length > 0) {
+      for (const chunk of audioChunks) {
+        this.muxer.addAudioChunk(chunk);
+      }
+    }
+
+    const totalChunks = videoChunks.length || 1;
     let processed = 0;
 
     for (let i = 0; i < videoChunks.length; i++) {
@@ -522,44 +568,47 @@ export class Reencoder extends EventEmitter {
         throw new Error('Cancelled');
       }
 
+      if (this.videoDecoderError) {
+        const msg = this.videoDecoderError.message || this.videoDecoderError.name || String(this.videoDecoderError);
+        this.destroy();
+        this.blobManager.close();
+        throw new Error(`VideoDecoder failed: ${msg}`);
+      }
+
+      if (this.videoEncoderError) {
+        const msg = this.videoEncoderError.message || this.videoEncoderError.name || String(this.videoEncoderError);
+        this.destroy();
+        this.blobManager.close();
+        throw new Error(`VideoEncoder failed: ${msg}`);
+      }
+
       this.videoDecoder.decode(videoChunks[i]);
       processed++;
 
-      if (i % 25 === 0) {
-        const waitEncodePromise = new Promise((resolve) => {
-          this.resolveRecodePromise = resolve;
-        });
-        if (this.videoDecoder.decodeQueueSize >= 10 || this.videoEncoder.encodeQueueSize >= 10) {
-          await waitEncodePromise;
-        }
+      // Strict mobile RAM & GPU queue management:
+      // Never let decoder or encoder queue exceed 4 frames on mobile
+      while (this.videoDecoder && (this.videoDecoder.decodeQueueSize >= 4 || (this.videoEncoder && this.videoEncoder.encodeQueueSize >= 4))) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+
+      if (i % 10 === 0) {
         const prog = processed / totalChunks;
         this.emit('progress', prog);
         if (onProgress) onProgress(prog);
+        await new Promise((r) => setTimeout(r, 0));
       }
     }
 
-    if (this.audioDecoder && audioChunks.length > 0) {
-      for (let i = 0; i < audioChunks.length; i++) {
-        if (this.cancelled) {
-          this.destroy();
-          this.blobManager.close();
-          throw new Error('Cancelled');
-        }
-
-        this.audioDecoder.decode(audioChunks[i]);
-        processed++;
-
-        if (i % 25 === 0) {
-          const waitEncodePromise = new Promise((resolve) => {
-            this.resolveRecodePromise = resolve;
-          });
-          if (this.audioDecoder.decodeQueueSize >= 10 || this.audioEncoder.encodeQueueSize >= 10) {
-            await waitEncodePromise;
-          }
-          const prog = processed / totalChunks;
-          this.emit('progress', prog);
-          if (onProgress) onProgress(prog);
-        }
+    if (this.videoDecoder) {
+      try {
+        await this.videoDecoder.flush();
+      } catch (e) {
+        console.warn('VideoDecoder flush warning:', e);
+      }
+      try {
+        await this.videoEncoder.flush();
+      } catch (e) {
+        console.warn('VideoEncoder flush warning:', e);
       }
     }
 

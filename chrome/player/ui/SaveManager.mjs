@@ -254,7 +254,7 @@ export class SaveManager {
           );
           result = {blob: downscaledBlob, extension: 'mp4'};
         } catch (e) {
-          console.error('Downsampling failed:', e);
+          console.error('Downsampling failed:', e.name, e.message, e.stack || e);
           this.setStatusMessage('save-video', Localize.getMessage('player_savevideo_fail'), 'error', 2000);
           this.makingDownload = false;
           this.downloadCancel = null;

@@ -1,4 +1,4 @@
-import {MP4Box} from '../mp4box.mjs';
+import {MP4Box, DataStream} from '../mp4box.mjs';
 import {JsWebm} from './webm.mjs';
 
 class AbstractDemuxer {
@@ -204,6 +204,9 @@ export class WebMDemuxer extends AbstractDemuxer {
 export class MP4Demuxer extends AbstractDemuxer {
   constructor() {
     super();
+    this.videoSamples = [];
+    this.audioSamples = [];
+    this.nextPos = 0;
   }
 
   createFile(buffer) {
@@ -216,36 +219,51 @@ export class MP4Demuxer extends AbstractDemuxer {
 
   initialize(initSegment) {
     this.file = this.createFile();
+    this.videoSamples = [];
+    this.audioSamples = [];
+
+    this.file.onReady = (info) => {
+      this.info = info;
+      this.videoTrack = info.videoTracks[0];
+      this.audioTrack = info.audioTracks[0];
+
+      if (this.videoTrack) {
+        this.file.setExtractionOptions(this.videoTrack.id, 'video', {nbSamples: 100000});
+      }
+      if (this.audioTrack) {
+        this.file.setExtractionOptions(this.audioTrack.id, 'audio', {nbSamples: 100000});
+      }
+      this.file.start();
+    };
+
+    this.file.onSamples = (id, user, samples) => {
+      if (user === 'video' || (this.videoTrack && id === this.videoTrack.id)) {
+        this.videoSamples.push(...samples);
+      } else if (user === 'audio' || (this.audioTrack && id === this.audioTrack.id)) {
+        this.audioSamples.push(...samples);
+      }
+    };
+
     initSegment.fileStart = 0;
     this.file.appendBuffer(initSegment);
     this.nextPos = initSegment.byteLength;
     this.file.flush();
 
-    if (!this.file.moov) {
-      throw new Error('moov not found');
+    if (!this.info) {
+      try {
+        this.info = this.file.getInfo();
+        this.videoTrack = this.info.videoTracks[0];
+        this.audioTrack = this.info.audioTracks[0];
+        if (this.videoTrack) {
+          this.file.setExtractionOptions(this.videoTrack.id, 'video', {nbSamples: 100000});
+        }
+        if (this.audioTrack) {
+          this.file.setExtractionOptions(this.audioTrack.id, 'audio', {nbSamples: 100000});
+        }
+        this.file.start();
+        this.file.flush();
+      } catch (e) {}
     }
-
-    this.info = this.file.getInfo();
-
-    this.videoTrack = this.info.videoTracks[0];
-    this.audioTrack = this.info.audioTracks[0];
-
-    this.videoSamples = [];
-    this.audeoSamples = [];
-
-    if (this.videoTrack) {
-      this.file.setExtractionOptions(this.videoTrack.id, this.videoTrack, {nbSamples: 1});
-    }
-
-    if (this.audioTrack) {
-      this.file.setExtractionOptions(this.audioTrack.id, this.audioTrack, {nbSamples: 1});
-    }
-
-    this.file.onSamples = (id, user, samples) => {
-
-    };
-
-    this.file.start();
   }
 
   appendBuffer(buffer) {
@@ -260,13 +278,76 @@ export class MP4Demuxer extends AbstractDemuxer {
     if (!videoTrack) {
       return null;
     }
-    return {
+    const description = this.getTrackDescription(this.videoTrack.id);
+    const config = {
       codec: videoTrack.codec,
-      codedWidth: videoTrack.video.width,
-      codedHeight: videoTrack.video.height,
+      codedWidth: videoTrack.video?.width || videoTrack.track_width,
+      codedHeight: videoTrack.video?.height || videoTrack.track_height,
       displayAspectWidth: videoTrack.track_width,
       displayAspectHeight: videoTrack.track_height,
     };
+    if (description && description.byteLength > 0) {
+      config.description = description;
+    }
+    console.log('[MP4Demuxer] VideoDecoderConfig description length:', description ? description.byteLength : 0);
+    return config;
+  }
+
+  getTrackDescription(trackId) {
+    if (!this.file || !trackId) return undefined;
+    try {
+      const trak = this.file.getTrackById(trackId);
+      if (!trak?.mdia?.minf?.stbl?.stsd?.entries) return undefined;
+      for (const entry of trak.mdia.minf.stbl.stsd.entries) {
+        const box = entry.avcC || entry.hvcC || entry.vpcC || entry.av1C;
+        if (box) {
+          const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
+          box.write(stream);
+          if (stream.position > 8) {
+            // Slice the exact byte array from byte 8 to stream.position
+            return new Uint8Array(stream.buffer.slice(8, stream.position));
+          }
+        }
+        // Fallback: If entry.avcC has SPS/PPS arrays directly
+        if (entry.avcC?.SPS?.length && entry.avcC?.PPS?.length) {
+          const spsList = entry.avcC.SPS;
+          const ppsList = entry.avcC.PPS;
+          let totalLen = 6;
+          for (const s of spsList) totalLen += 2 + s.nalu.byteLength;
+          totalLen += 1;
+          for (const p of ppsList) totalLen += 2 + p.nalu.byteLength;
+
+          const desc = new Uint8Array(totalLen);
+          let offset = 0;
+          desc[offset++] = entry.avcC.configurationVersion || 1;
+          desc[offset++] = entry.avcC.AVCProfileIndication || 0x42;
+          desc[offset++] = entry.avcC.profile_compatibility || 0x00;
+          desc[offset++] = entry.avcC.AVCLevelIndication || 0x1f;
+          desc[offset++] = (entry.avcC.lengthSizeMinusOne ?? 3) | 0xfc;
+          desc[offset++] = spsList.length | 0xe0;
+
+          for (const s of spsList) {
+            desc[offset++] = (s.nalu.byteLength >> 8) & 0xff;
+            desc[offset++] = s.nalu.byteLength & 0xff;
+            desc.set(s.nalu, offset);
+            offset += s.nalu.byteLength;
+          }
+
+          desc[offset++] = ppsList.length;
+          for (const p of ppsList) {
+            desc[offset++] = (p.nalu.byteLength >> 8) & 0xff;
+            desc[offset++] = p.nalu.byteLength & 0xff;
+            desc.set(p.nalu, offset);
+            offset += p.nalu.byteLength;
+          }
+
+          return desc;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not extract track description:', e);
+    }
+    return undefined;
   }
 
   getAudioDecoderConfig() {
@@ -277,8 +358,8 @@ export class MP4Demuxer extends AbstractDemuxer {
     return {
       codec: audioTrack.codec,
       description: undefined,
-      sampleRate: audioTrack.audio.sample_rate,
-      numberOfChannels: audioTrack.audio.channel_count,
+      sampleRate: audioTrack.audio?.sample_rate || audioTrack.timescale || 44100,
+      numberOfChannels: audioTrack.audio?.channel_count || 2,
     };
   }
 
@@ -287,38 +368,32 @@ export class MP4Demuxer extends AbstractDemuxer {
       return [];
     }
     const trak = this.file.getTrackById(this.videoTrack.id);
-
-    const samples = trak.samples_stored;
+    const samples = (this.videoSamples && this.videoSamples.length > 0) ? this.videoSamples : (trak?.samples_stored || []);
+    if (!samples || samples.length === 0) {
+      return [];
+    }
 
     const chunks = [];
-    for (let i = 0; i < samples.length - 1; i++) {
+    for (let i = 0; i < samples.length; i++) {
       const sample = samples[i];
       const nextSample = samples[i + 1];
 
-      const timescale = sample.timescale;
+      const timescale = sample.timescale || this.videoTrack.timescale || 90000;
       const currentTimestamp = Math.floor(sample.cts * 1000000 / timescale);
-      const nextTimestamp = Math.floor(nextSample.cts * 1000000 / timescale);
+      const sampleDuration = nextSample ?
+        Math.floor((nextSample.cts - sample.cts) * 1000000 / timescale) :
+        Math.floor((sample.duration || timescale / 30) * 1000000 / timescale);
+
+      // WebCodecs requires the first decoded chunk to be a keyframe
+      const isKey = (i === 0) ? true : !!sample.is_sync;
+
       const chunk = new EncodedVideoChunk({
-        type: sample.is_sync ? 'key' : 'delta',
+        type: isKey ? 'key' : 'delta',
         timestamp: currentTimestamp,
-        duration: nextTimestamp - currentTimestamp,
+        duration: sampleDuration > 0 ? sampleDuration : 33333,
         data: sample.data,
       });
       chunks.push(chunk);
-    }
-
-    if (duration) {
-      const lastSample = samples[samples.length - 1];
-      const timescale = lastSample.timescale;
-      const lastTimestamp = Math.floor(lastSample.cts * 1000000 / timescale);
-      const lastDuration = Math.floor(lastSample.duration * 1000000 / timescale);
-      const lastChunk = new EncodedVideoChunk({
-        type: lastSample.is_sync ? 'key' : 'delta',
-        timestamp: lastTimestamp,
-        duration: lastDuration,
-        data: lastSample.data,
-      });
-      chunks.push(lastChunk);
     }
 
     return chunks;
@@ -329,38 +404,29 @@ export class MP4Demuxer extends AbstractDemuxer {
       return [];
     }
     const trak = this.file.getTrackById(this.audioTrack.id);
-
-    const samples = trak.samples_stored;
+    const samples = (this.audioSamples && this.audioSamples.length > 0) ? this.audioSamples : (trak?.samples_stored || []);
+    if (!samples || samples.length === 0) {
+      return [];
+    }
 
     const chunks = [];
-    for (let i = 0; i < samples.length - 1; i++) {
+    for (let i = 0; i < samples.length; i++) {
       const sample = samples[i];
       const nextSample = samples[i + 1];
 
-      const timescale = sample.timescale;
+      const timescale = sample.timescale || this.audioTrack.timescale || 44100;
       const currentTimestamp = Math.floor(sample.cts * 1000000 / timescale);
-      const nextTimestamp = Math.floor(nextSample.cts * 1000000 / timescale);
+      const sampleDuration = nextSample ?
+        Math.floor((nextSample.cts - sample.cts) * 1000000 / timescale) :
+        Math.floor((sample.duration || 1024) * 1000000 / timescale);
+
       const chunk = new EncodedAudioChunk({
         type: sample.is_sync ? 'key' : 'delta',
         timestamp: currentTimestamp,
-        duration: nextTimestamp - currentTimestamp,
+        duration: sampleDuration > 0 ? sampleDuration : 23220,
         data: sample.data,
       });
       chunks.push(chunk);
-    }
-
-    if (duration) {
-      const lastSample = samples[samples.length - 1];
-      const timescale = lastSample.timescale;
-      const lastTimestamp = Math.floor(lastSample.cts * 1000000 / timescale);
-      const lastDuration = Math.floor(lastSample.duration * 1000000 / timescale);
-      const lastChunk = new EncodedAudioChunk({
-        type: lastSample.is_sync ? 'key' : 'delta',
-        timestamp: lastTimestamp,
-        duration: lastDuration,
-        data: lastSample.data,
-      });
-      chunks.push(lastChunk);
     }
 
     return chunks;
