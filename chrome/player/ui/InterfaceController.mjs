@@ -342,8 +342,10 @@ export class InterfaceController {
     DOMElements.playerContainer.addEventListener('mousedown', interactHandler, true);
     DOMElements.playerContainer.addEventListener('touchstart', interactHandler, true);
 
-    DOMElements.playPauseButton.addEventListener('click', this.playPauseToggle.bind(this));
-    WebUtils.setupTabIndex(DOMElements.playPauseButton);
+    if (DOMElements.playPauseButton) {
+      DOMElements.playPauseButton.addEventListener('click', this.playPauseToggle.bind(this));
+      WebUtils.setupTabIndex(DOMElements.playPauseButton);
+    }
 
     DOMElements.playPauseButtonBigCircle.addEventListener('click', (e) => {
       this.hideControlBarOnAction();
@@ -1618,13 +1620,21 @@ export class InterfaceController {
     const playButton = DOMElements.playPauseButton;
     const playButtonBig = DOMElements.playPauseButtonBig;
     if (this.state.playing) {
-      playButton.classList.add('playing');
-      playButtonBig.classList.replace('fluid_initial_play_button', 'fluid_initial_pause_button');
-      WebUtils.setLabels(playButton, Localize.getMessage('player_pause_label'));
+      if (playButton) {
+        playButton.classList.add('playing');
+        WebUtils.setLabels(playButton, Localize.getMessage('player_pause_label'));
+      }
+      if (playButtonBig) {
+        playButtonBig.classList.replace('fluid_initial_pause_button', 'fluid_initial_play_button');
+      }
     } else {
-      playButton.classList.remove('playing');
-      playButtonBig.classList.replace('fluid_initial_pause_button', 'fluid_initial_play_button');
-      WebUtils.setLabels(playButton, Localize.getMessage('player_play_label'));
+      if (playButton) {
+        playButton.classList.remove('playing');
+        WebUtils.setLabels(playButton, Localize.getMessage('player_play_label'));
+      }
+      if (playButtonBig) {
+        playButtonBig.classList.replace('fluid_initial_play_button', 'fluid_initial_pause_button');
+      }
     }
   }
 

@@ -160,6 +160,9 @@
         /* === Kiwi Mobile: Play/Pause Circle Animation === */
         .fluid_control_playpause_big_circle {
             transition: transform 0.3s ease, opacity 0.3s ease, background-color 0.2s ease;
+            background-color: var(--popwindow-background-color) !important;
+            border: var(--popwindow-border);
+            opacity: 0.9;
         }
         .fluid_control_playpause_big_circle.transform-active {
             animation: kiwi-playpause-bounce 0.45s ease-out;
@@ -176,8 +179,13 @@
             }
             100% {
                 transform: scale(1);
-                opacity: 1;
+                opacity: 0.9;
             }
+        }
+
+        /* Hide control bar bottom-left play/pause button */
+        .fluid_control_playpause {
+            display: none !important;
         }
 
         /* === Kiwi Mobile: Volume Block Expanded Styles === */
@@ -1023,10 +1031,10 @@
             <div role="button" class="hide_button" tabindex="0" data-i18n="player_hidecontrols"></div>
         </div>
         <div class="fluid_html_on_pause">
-            <div role="button" data-i18n-label="player_play_label"
+            <div role="button" data-i18n-label="player_pause_label"
                 class="fluid_control_playpause_big_circle fluid_initial_play"
-                style="background-color: rgb(51, 51, 51);">
-                <div class="fluid_control_playpause_big fluid_initial_play_button"></div>
+                style="background-color: var(--popwindow-background-color);">
+                <div class="fluid_control_playpause_big fluid_initial_pause_button"></div>
             </div>
             <div class="playinfo">
                 <h3 data-i18n="player_nosource_header"></h3>
